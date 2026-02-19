@@ -15,6 +15,10 @@ pub enum Commands {
         #[arg(short = 't', long = "type", default_value = "string")]
         value_type: String,
 
+        /// Read value from file
+        #[arg(short = 'F', long = "file")]
+        file: Option<String>,
+
         /// Target in type:value format (e.g. commit:abc123)
         target: String,
 
@@ -22,7 +26,7 @@ pub enum Commands {
         key: String,
 
         /// Value (string or JSON array for lists)
-        value: String,
+        value: Option<String>,
     },
 
     /// Get metadata value(s)

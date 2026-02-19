@@ -14,10 +14,11 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Set {
             value_type,
+            file,
             target,
             key,
             value,
-        } => commands::set::run(&target, &key, &value, &value_type),
+        } => commands::set::run(&target, &key, value.as_deref(), file.as_deref(), &value_type),
 
         Commands::Get {
             json,
