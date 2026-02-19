@@ -1,0 +1,88 @@
+use clap::{Parser, Subcommand};
+
+#[derive(Parser)]
+#[command(name = "gmeta", about = "Structured metadata for Git data")]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Commands,
+}
+
+#[derive(Subcommand)]
+pub enum Commands {
+    /// Set a metadata value
+    Set {
+        /// Value type: string (default) or list
+        #[arg(short = 't', long = "type", default_value = "string")]
+        value_type: String,
+
+        /// Target in type:value format (e.g. commit:abc123)
+        target: String,
+
+        /// Key (can be namespaced with colons, e.g. agent:model)
+        key: String,
+
+        /// Value (string or JSON array for lists)
+        value: String,
+    },
+
+    /// Get metadata value(s)
+    Get {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Include authorship info (requires --json)
+        #[arg(long = "with-authorship")]
+        with_authorship: bool,
+
+        /// Target in type:value format
+        target: String,
+
+        /// Key (optional, partial key matches)
+        key: Option<String>,
+    },
+
+    /// Remove a metadata key
+    Rm {
+        /// Target in type:value format
+        target: String,
+
+        /// Key to remove
+        key: String,
+    },
+
+    /// Push a value onto a list
+    #[command(name = "list:push")]
+    ListPush {
+        /// Target in type:value format
+        target: String,
+
+        /// Key
+        key: String,
+
+        /// Value to push
+        value: String,
+    },
+
+    /// Pop a value from a list
+    #[command(name = "list:pop")]
+    ListPop {
+        /// Target in type:value format
+        target: String,
+
+        /// Key
+        key: String,
+
+        /// Value to pop
+        value: String,
+    },
+
+    /// Serialize metadata to Git ref
+    Serialize,
+
+    /// Materialize remote metadata into local SQLite
+    Materialize {
+        /// Remote name (optional, defaults to all remotes)
+        remote: Option<String>,
+    },
+}
