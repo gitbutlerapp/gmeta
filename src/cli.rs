@@ -93,4 +93,28 @@ pub enum Commands {
         #[arg(long = "dry-run")]
         dry_run: bool,
     },
+
+    /// Import metadata from another format
+    Import {
+        /// Source format (e.g. "entire")
+        #[arg(long)]
+        format: String,
+
+        /// Show what would be imported without writing
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+
+        /// Only import metadata for commits on or after this date (YYYY-MM-DD)
+        #[arg(long)]
+        since: Option<String>,
+    },
+
+    /// Show metadata statistics
+    Stats,
+
+    /// Benchmark read performance across all stored keys
+    Bench,
+
+    /// Remove the gmeta database and all meta refs
+    Teardown,
 }
