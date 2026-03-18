@@ -6,7 +6,9 @@
       "Bash(cargo:*)",
       "Bash(ls:*)",
       "Bash(but:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(grep -r transcript /Users/schacon/projects/gmeta --exclude-dir=target --exclude-dir=.git --exclude=*.lock)",
+      "Bash(chmod:*)"
     ]
   }
 }
