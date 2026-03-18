@@ -47,5 +47,17 @@ fn main() -> Result<()> {
         Commands::Materialize { remote, dry_run } => {
             commands::materialize::run(remote.as_deref(), dry_run)
         }
+
+        Commands::Import {
+            format,
+            dry_run,
+            since,
+        } => commands::import::run(&format, dry_run, since.as_deref()),
+
+        Commands::Stats => commands::stats::run(),
+
+        Commands::Bench => commands::bench::run(),
+
+        Commands::Teardown => commands::teardown::run(),
     }
 }
