@@ -1,8 +1,8 @@
 ## Notes
 
-- offload larger blobs to git references in sqlite (remove from sqlite file)
-  - blob attachments as metadata
-- what happens if two users on a project independently _start_ a meta ref? can you merge from two independent trees? rebase? what if they add the same key with different values?
+~ offload larger blobs to git references in sqlite (remove from sqlite file)
+- git-ai import
+
 - namespaces (local, shared, internal, etc - push targets (none, remote)
   - materialize targets too
   - on conflicts, which wins?
