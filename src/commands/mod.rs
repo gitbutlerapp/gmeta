@@ -1,7 +1,9 @@
 pub mod bench;
+pub mod fanout_bench;
 pub mod get;
 pub mod import;
 pub mod list;
+pub mod log;
 pub mod materialize;
 pub mod rm;
 pub mod serialize;

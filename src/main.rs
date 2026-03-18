@@ -56,7 +56,15 @@ fn main() -> Result<()> {
 
         Commands::Stats => commands::stats::run(),
 
+        Commands::Log {
+            start_ref,
+            count,
+            metadata_only,
+        } => commands::log::run(start_ref.as_deref(), count, metadata_only),
+
         Commands::Bench => commands::bench::run(),
+
+        Commands::FanoutBench { objects } => commands::fanout_bench::run(objects),
 
         Commands::Teardown => commands::teardown::run(),
     }

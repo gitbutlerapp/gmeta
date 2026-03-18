@@ -112,8 +112,30 @@ pub enum Commands {
     /// Show metadata statistics
     Stats,
 
+    /// Walk commit log and show metadata for each commit
+    Log {
+        /// Commit-ish to start from (default: HEAD)
+        #[arg(value_name = "REF")]
+        start_ref: Option<String>,
+
+        /// Number of commits to show (default: 20)
+        #[arg(short = 'n', default_value = "20")]
+        count: usize,
+
+        /// Only show commits that have metadata
+        #[arg(long = "mo")]
+        metadata_only: bool,
+    },
+
     /// Benchmark read performance across all stored keys
     Bench,
+
+    /// Benchmark fanout schemes (first2 vs first3 vs first2/next2) on a synthetic repo
+    FanoutBench {
+        /// Number of base objects to populate the tree with (default: 1_000_000)
+        #[arg(long, default_value = "1000000")]
+        objects: usize,
+    },
 
     /// Remove the gmeta database and all meta refs
     Teardown,
