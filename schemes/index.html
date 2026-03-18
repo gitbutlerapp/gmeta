@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gmeta — Fanout Scheme Analysis</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #1e2030;
+    color: #c8cad8;
+    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── layout ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    grid-template-rows: auto 1fr;
+    min-height: 100vh;
+  }
+
+  /* ── header ── */
+  header {
+    grid-column: 1 / -1;
+    padding: 28px 36px 20px;
+    border-bottom: 1px solid #2e3048;
+    display: flex;
+    align-items: baseline;
+    gap: 20px;
+  }
+
+  header h1 {
+    color: #e0e2f0;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+
+  header .subtitle {
+    color: #8a8da0;
+    font-size: 12px;
+  }
+
+  /* ── sidebar ── */
+  .sidebar {
+    padding: 28px 24px;
+    border-right: 1px solid #2e3048;
+    overflow-y: auto;
+  }
+
+  .sidebar section {
+    margin-bottom: 32px;
+  }
+
+  .sidebar h2 {
+    color: #e0e2f0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #2e3048;
+  }
+
+  .sidebar p {
+    color: #a8aaba;
+    font-size: 12.5px;
+    line-height: 1.65;
+    margin-bottom: 10px;
+  }
+
+  .sidebar p:last-child { margin-bottom: 0; }
+
+  /* ── scheme table ── */
+  .scheme-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+
+  .scheme-table th {
+    color: #8a8da0;
+    font-weight: 600;
+    text-align: left;
+    padding: 4px 6px;
+    border-bottom: 1px solid #2e3048;
+  }
+
+  .scheme-table td {
+    padding: 5px 6px;
+    vertical-align: top;
+    border-bottom: 1px solid #252738;
+    color: #a8aaba;
+  }
+
+  .scheme-table tr:last-child td { border-bottom: none; }
+
+  .scheme-table .target { color: #c8cad8; font-weight: 600; }
+  .scheme-table .scheme { color: #7cc8e8; }
+  .scheme-table .reason { color: #8a8da0; font-size: 11px; }
+
+  /* ── key finding pills ── */
+  .finding {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .finding .icon {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    margin-top: 1px;
+  }
+
+  .icon-warn  { background: #3a2e1a; color: #e8c460; }
+  .icon-good  { background: #1e2e1a; color: #a8d86c; }
+  .icon-info  { background: #1a2538; color: #7cc8e8; }
+
+  .finding .text {
+    color: #a8aaba;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .finding .text strong { color: #c8cad8; }
+
+  /* ── benchmark nav ── */
+  .bench-list {
+    list-style: none;
+  }
+
+  .bench-list li {
+    margin-bottom: 4px;
+  }
+
+  .bench-list button {
+    width: 100%;
+    text-align: left;
+    background: #252738;
+    border: 1px solid #2e3048;
+    border-radius: 4px;
+    color: #a8aaba;
+    font-family: inherit;
+    font-size: 12.5px;
+    padding: 8px 10px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .bench-list button:hover {
+    background: #2e3048;
+    border-color: #4a4e6a;
+    color: #c8cad8;
+  }
+
+  .bench-list button.active {
+    background: #1a2538;
+    border-color: #7cc8e8;
+    color: #7cc8e8;
+  }
+
+  .bench-list .obj-count {
+    font-size: 11px;
+    color: #8a8da0;
+    opacity: 0.8;
+  }
+
+  .bench-list button.active .obj-count { color: #5aa8c8; }
+
+  /* ── iframe panel ── */
+  .iframe-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .iframe-panel .panel-header {
+    padding: 14px 24px;
+    border-bottom: 1px solid #2e3048;
+    color: #8a8da0;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .panel-header .panel-title {
+    color: #c8cad8;
+    font-weight: 600;
+  }
+
+  .panel-header .panel-note {
+    margin-left: auto;
+    color: #6a6e88;
+    font-size: 11px;
+  }
+
+  .iframe-panel iframe {
+    flex: 1;
+    border: none;
+    width: 100%;
+    background: #1e2030;
+  }
+
+  .iframe-placeholder {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #4a4e6a;
+    font-size: 13px;
+  }
+
+  /* ── inline code ── */
+  code {
+    background: #252738;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 12px;
+    color: #7cc8e8;
+  }
+
+  /* ── verdict badge ── */
+  .verdict {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #1e2e1a;
+    border: 1px solid #3a5a2a;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: #a8d86c;
+    margin-top: 4px;
+    margin-bottom: 4px;
+  }
+
+  .verdict::before { content: '✓'; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- ── header ── -->
+  <header>
+    <h1>gmeta &mdash; Fanout Scheme Analysis</h1>
+    <span class="subtitle">git tree sharding strategy for commit metadata storage</span>
+  </header>
+
+  <!-- ── sidebar ── -->
+  <aside class="sidebar">
+
+    <section>
+      <h2>Background</h2>
+      <p>
+        gmeta stores metadata for git objects (commits, branches, paths, …) as
+        blobs inside git trees, serialized under <code>refs/meta/local</code>.
+        Each target type needs a sharding strategy so that no single tree node
+        holds too many entries as the repo grows.
+      </p>
+      <p>
+        Three candidate schemes were benchmarked for commit-SHA targets at
+        multiple scales: <strong>10k</strong>, <strong>100k</strong>, and
+        <strong>1M</strong> objects.
+      </p>
+    </section>
+
+    <section>
+      <h2>Schemes tested</h2>
+      <table class="scheme-table">
+        <tr>
+          <th>scheme</th>
+          <th>buckets</th>
+        </tr>
+        <tr>
+          <td><code>{first2}</code></td>
+          <td>256</td>
+        </tr>
+        <tr>
+          <td><code>{first3}</code></td>
+          <td>4 096</td>
+        </tr>
+        <tr>
+          <td><code>{first2}/{next2}</code></td>
+          <td>65 536</td>
+        </tr>
+      </table>
+      <p>
+        Write, read, diff, and pack-size were measured for each scheme using
+        the <code>gmeta fanout-bench</code> command on synthetic SHA targets
+        with uniform distribution.
+      </p>
+    </section>
+
+    <section>
+      <h2>Benchmark runs</h2>
+      <ul class="bench-list">
+        <li>
+          <button onclick="loadBench('benchmark-results-10k.html', '10k objects', this)">
+            10k objects
+            <span class="obj-count">~small repo</span>
+          </button>
+        </li>
+        <li>
+          <button onclick="loadBench('benchmark-results-100k.html', '100k objects', this)">
+            100k objects
+            <span class="obj-count">~mid-size repo</span>
+          </button>
+        </li>
+        <li>
+          <button onclick="loadBench('benchmark-results.html', '1M objects', this)" id="btn-1m">
+            1M objects
+            <span class="obj-count">~large repo</span>
+          </button>
+        </li>
+      </ul>
+    </section>
+
+
+    <section>
+      <h2>Key findings</h2>
+
+      <div class="finding">
+        <div class="icon icon-warn">!</div>
+        <div class="text">
+          <strong>Diff cost explodes with depth.</strong> At 1M objects,
+          <code>{first2}/{next2}</code> is <strong>42× slower</strong> to diff
+          than <code>{first2}</code> (30.5 s vs 0.7 s) because
+          <code>diff_tree_to_tree</code> must open every intermediate tree node
+          on the path to each change.
+        </div>
+      </div>
+
+      <div class="finding">
+        <div class="icon icon-info">i</div>
+        <div class="text">
+          <strong>Pack size is nearly identical</strong> across all three
+          schemes at 1M objects (106–116 MB). Blob content dominates; the
+          extra tree objects from deeper sharding compress away.
+        </div>
+      </div>
+
+      <div class="finding">
+        <div class="icon icon-info">i</div>
+        <div class="text">
+          <strong>Read speed favours <code>{first2}/{next2}</code></strong>
+          slightly (600 µs vs 1332 µs per object at 1M) because
+          <code>tree.get_path()</code> descends into smaller leaf buckets.
+          The difference is small compared to the diff penalty.
+        </div>
+      </div>
+
+      <div class="finding">
+        <div class="icon icon-good">✓</div>
+        <div class="text">
+          <strong>256 buckets is sufficient for commit SHAs.</strong> At 10M
+          commits each <code>{first2}</code> bucket holds ~39k entries — well
+          within git's efficient range. A second level would only be needed
+          beyond ~500M commits with metadata.
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Decisions</h2>
+
+      <table class="scheme-table">
+        <tr>
+          <th>target</th>
+          <th>scheme</th>
+        </tr>
+        <tr>
+          <td class="target">commit</td>
+          <td>
+            <div class="scheme"><code>{first2}/{sha}</code></div>
+            <div class="reason">SHA is uniform. One prefix level handles hundreds of millions of commits with fast diffs.</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="target">change-id</td>
+          <td>
+            <div class="scheme"><code>{first2}/{id}</code></div>
+            <div class="reason">Change IDs are opaque hex — already uniform, same logic as commit.</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="target">branch</td>
+          <td>
+            <div class="scheme"><code>{first2(hash(name))}/{name}</code></div>
+            <div class="reason">Branch names cluster on prefixes (<code>feature/</code>, <code>fix/</code>, …). Hashing before taking first2 gives uniform distribution.</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="target">path</td>
+          <td>
+            <div class="scheme"><code>{path}</code></div>
+            <div class="reason">The path itself is hierarchical. Git's tree structure provides natural directory-level fanout for free.</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="target">project</td>
+          <td>
+            <div class="scheme"><code>project</code></div>
+            <div class="reason">Singleton — no sharding needed.</div>
+          </td>
+        </tr>
+      </table>
+    </section>
+
+  </aside>
+
+  <!-- ── iframe panel ── -->
+  <div class="iframe-panel" id="iframe-panel">
+    <div class="panel-header">
+      <span class="panel-title" id="panel-title">select a benchmark run</span>
+      <span class="panel-note">raw output from <code>gmeta fanout-bench</code></span>
+    </div>
+    <div class="iframe-placeholder" id="iframe-placeholder">
+      ← select a benchmark run from the sidebar
+    </div>
+    <iframe id="bench-frame" style="display:none" title="benchmark results"></iframe>
+  </div>
+
+</div>
+
+<script>
+  function loadBench(file, label, btn) {
+    // Update active button state
+    document.querySelectorAll('.bench-list button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    // Update panel header
+    document.getElementById('panel-title').textContent = label;
+
+    // Swap placeholder for iframe
+    document.getElementById('iframe-placeholder').style.display = 'none';
+    const frame = document.getElementById('bench-frame');
+    frame.style.display = 'block';
+    frame.src = file;
+  }
+
+  // Load 1M by default
+  window.addEventListener('DOMContentLoaded', () => {
+    loadBench('benchmark-results.html', '1M objects', document.getElementById('btn-1m'));
+  });
+</script>
+
+</body>
+</html>
