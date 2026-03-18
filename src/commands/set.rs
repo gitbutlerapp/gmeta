@@ -5,7 +5,7 @@ use std::fs;
 use crate::db::Db;
 use crate::git_utils;
 use crate::list_value::{encode_entries, parse_entries};
-use crate::types::{validate_key, Target, ValueType};
+use crate::types::{validate_key, Target, ValueType, GIT_REF_THRESHOLD};
 
 pub fn run(
     target_str: &str,
@@ -18,6 +18,7 @@ pub fn run(
     validate_key(key)?;
     let value_type = ValueType::from_str(value_type_str)?;
 
+    let from_file = file.is_some();
     let raw_value = match (value, file) {
         (Some(_), Some(_)) => bail!("cannot specify both a value and -F/--file"),
         (None, None) => bail!("must specify either a value or -F/--file"),
@@ -35,26 +36,45 @@ pub fn run(
 
     let db = Db::open(&db_path)?;
 
-    let stored_value = match value_type {
-        ValueType::String => {
-            // Store as JSON-encoded string
-            serde_json::to_string(&raw_value)?
-        }
-        ValueType::List => {
-            let entries = parse_entries(&raw_value)?;
-            encode_entries(&entries)?
-        }
-    };
+    // For large file imports (>1KB via -F), store as a git blob reference
+    let use_git_ref =
+        from_file && matches!(value_type, ValueType::String) && raw_value.len() > GIT_REF_THRESHOLD;
 
-    db.set(
-        target.type_str(),
-        target.value_str(),
-        key,
-        &stored_value,
-        value_type.as_str(),
-        &email,
-        timestamp,
-    )?;
+    if use_git_ref {
+        let blob_oid = repo.blob(raw_value.as_bytes())?;
+        db.set_with_git_ref(
+            None,
+            target.type_str(),
+            target.value_str(),
+            key,
+            &blob_oid.to_string(),
+            value_type.as_str(),
+            &email,
+            timestamp,
+            true,
+        )?;
+    } else {
+        let stored_value = match value_type {
+            ValueType::String => {
+                // Store as JSON-encoded string
+                serde_json::to_string(&raw_value)?
+            }
+            ValueType::List => {
+                let entries = parse_entries(&raw_value)?;
+                encode_entries(&entries)?
+            }
+        };
+
+        db.set(
+            target.type_str(),
+            target.value_str(),
+            key,
+            &stored_value,
+            value_type.as_str(),
+            &email,
+            timestamp,
+        )?;
+    }
 
     Ok(())
 }

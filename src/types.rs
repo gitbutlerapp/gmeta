@@ -130,6 +130,9 @@ impl ValueType {
     }
 }
 
+/// Size threshold (in bytes) above which file values are stored as git blob references.
+pub const GIT_REF_THRESHOLD: usize = 1024;
+
 /// Root directory used to store key segments in serialized trees.
 pub const KEY_TREE_ROOT: &str = "k";
 

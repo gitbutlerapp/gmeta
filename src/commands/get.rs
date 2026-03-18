@@ -1,4 +1,5 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
+use git2::Repository;
 use serde_json::{json, Map, Value};
 
 use crate::db::Db;
@@ -27,13 +28,39 @@ pub fn run(
         return Ok(());
     }
 
+    // Resolve git refs to actual values
+    let resolved: Vec<(String, String, String)> = entries
+        .into_iter()
+        .map(|(key, value, value_type, is_git_ref)| {
+            if is_git_ref {
+                let resolved_value = resolve_git_ref(&repo, &value)?;
+                // JSON-encode the resolved content to match normal string format
+                let json_value = serde_json::to_string(&resolved_value)?;
+                Ok((key, json_value, value_type))
+            } else {
+                Ok((key, value, value_type))
+            }
+        })
+        .collect::<Result<Vec<_>>>()?;
+
     if json_output {
-        print_json(&db, &target, &entries, with_authorship)?;
+        print_json(&db, &target, &resolved, with_authorship)?;
     } else {
-        print_plain(&entries)?;
+        print_plain(&resolved)?;
     }
 
     Ok(())
+}
+
+/// Resolve a git blob SHA to its content as a UTF-8 string.
+fn resolve_git_ref(repo: &Repository, sha: &str) -> Result<String> {
+    let oid = git2::Oid::from_str(sha).with_context(|| format!("invalid git blob SHA: {}", sha))?;
+    let blob = repo
+        .find_blob(oid)
+        .with_context(|| format!("git blob not found: {}", sha))?;
+    let content = std::str::from_utf8(blob.content())
+        .with_context(|| format!("git blob {} is not valid UTF-8", sha))?;
+    Ok(content.to_string())
 }
 
 fn print_plain(entries: &[(String, String, String)]) -> Result<()> {
