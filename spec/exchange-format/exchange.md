@@ -44,23 +44,34 @@ The commit message is not semantically important; the commit is mainly used for:
 
 ## Tree root layout
 
-The base tree path for a target is:
+The base tree path for a target is target-type dependent:
 
-`<target-type>/<fanout>/<full-target-value>`
+- `commit` → `<target-type>/<first2-of-sha>/<full-target-value>`
+- `branch` / `change-id` → `<target-type>/<fanout>/<full-target-value>`
+- `path` → `path/<escaped path segments...>/__target__`
+- `project` → `project`
 
 Fanout is target-type dependent:
 
 - for `commit`, use the first 2 characters of the commit SHA
-- for all other target types with a target value, use the first 2 hexadecimal characters of the SHA-1 hash of the target value
+- for `branch` and `change-id`, use the first 2 hexadecimal characters of the SHA-1 hash of the target value
+- for `path`, do not hash the target value; serialize the path segments directly
 
 Examples:
 
 - `commit/13/13a7d29cde8f8557b54fd6474f547a56822180ae/...`
 - `branch/06/sc-branch-1-deadbeef/...`
+- `path/src/metrics/__target__/owner/__value`
 
-This keeps commit paths readable and naturally distributed by object id prefix, while still avoiding oversized top-level directories for arbitrary branch, path, or change-id targets.
+For `path` targets, a reserved separator component `__target__` marks the end of the target path and the beginning of key segments.
+If a serialized path segment would begin with `__`, it must be escaped by prefixing it with `~`.
+To keep this reversible, a path segment beginning with `~` should also be escaped by prefixing it with `~`.
+Examples:
 
-`project` may be represented as a special well-known subtree because it has no user-facing target value.
+- raw path segment `__generated` → serialized as `~__generated`
+- raw path segment `~scratch` → serialized as `~~scratch`
+
+This keeps commit paths readable, preserves human-readable path targets, and still avoids ambiguity between serialized path targets and metadata structure.
 
 ## Key path layout
 

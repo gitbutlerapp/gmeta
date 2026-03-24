@@ -98,6 +98,7 @@ impl Target {
     ///
     /// Scheme per target type:
     ///   commit    → commit/{first2_of_sha}/{full_sha}
+    ///   path      → path/{escaped_path_segments...}/__target__
     ///   others    → type/{first2_of_sha1(target_value)}/{full_target_value}
     ///   project   → project
     pub fn tree_base_path(&self) -> String {
@@ -107,6 +108,11 @@ impl Target {
                 let v = self.value.as_deref().unwrap_or("");
                 let first2 = &v[..2];
                 format!("{}/{}/{}", self.type_str(), first2, v)
+            }
+            TargetType::Path => {
+                let v = self.value.as_deref().unwrap_or("");
+                let encoded = encode_path_target_value(v);
+                format!("{}/{}/{}", self.type_str(), encoded, PATH_TARGET_SEPARATOR)
             }
             _ => {
                 let v = self.value.as_deref().unwrap_or("");
@@ -161,12 +167,51 @@ pub const TOMBSTONE_ROOT: &str = "__tombstones";
 /// Reserved filename for tombstone blobs.
 pub const TOMBSTONE_BLOB: &str = "__deleted";
 
+/// Reserved separator between a serialized path target and its key path.
+pub const PATH_TARGET_SEPARATOR: &str = "__target__";
+
 /// Compute a stable 2-char hex shard prefix from the SHA-1 of the target value.
 fn value_shard_prefix(value: &str) -> String {
     let mut hasher = Sha1::new();
     hasher.update(value.as_bytes());
     let hash = format!("{:x}", hasher.finalize());
     hash[..2].to_string()
+}
+
+fn escape_path_target_segment(segment: &str) -> String {
+    if segment.starts_with('~') || segment.starts_with("__") {
+        format!("~{}", segment)
+    } else {
+        segment.to_string()
+    }
+}
+
+pub fn encode_path_target_value(value: &str) -> String {
+    value
+        .split('/')
+        .map(escape_path_target_segment)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+pub fn decode_path_target_segments(segments: &[&str]) -> Result<String> {
+    if segments.is_empty() {
+        bail!("path target must include at least one segment");
+    }
+
+    let decoded = segments
+        .iter()
+        .map(|segment| {
+            if let Some(rest) = segment.strip_prefix('~') {
+                rest.to_string()
+            } else {
+                (*segment).to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/");
+
+    Ok(decoded)
 }
 
 pub fn set_member_id(value: &str) -> String {
@@ -375,13 +420,21 @@ mod tests {
     }
 
     #[test]
-    fn test_tree_base_path_path_uses_sha1_fanout() {
+    fn test_tree_base_path_path_uses_raw_segments() {
         let t = Target::parse("path:src/main.rs").unwrap();
-        let expected_prefix = super::value_shard_prefix("src/main.rs");
-        assert_eq!(
-            t.tree_base_path(),
-            format!("path/{}/src/main.rs", expected_prefix)
-        );
+        assert_eq!(t.tree_base_path(), "path/src/main.rs/__target__");
+    }
+
+    #[test]
+    fn test_tree_base_path_path_escapes_reserved_segments() {
+        let t = Target::parse("path:src/__generated/file.rs").unwrap();
+        assert_eq!(t.tree_base_path(), "path/src/~__generated/file.rs/__target__");
+    }
+
+    #[test]
+    fn test_decode_path_target_segments() {
+        let decoded = super::decode_path_target_segments(&["src", "~__generated", "file.rs"]).unwrap();
+        assert_eq!(decoded, "src/__generated/file.rs");
     }
 
     #[test]

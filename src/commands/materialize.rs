@@ -7,8 +7,9 @@ use crate::git_utils;
 use crate::list_value::{encode_entries, parse_timestamp_from_entry_name, ListEntry};
 use crate::types::{
     build_list_tree_dir_path, build_set_member_tombstone_tree_path, build_set_tree_dir_path,
-    build_tombstone_tree_path, build_tree_path, decode_key_path_segments, set_member_id, Target,
-    LIST_VALUE_DIR, SET_VALUE_DIR, STRING_VALUE_BLOB, TOMBSTONE_BLOB, TOMBSTONE_ROOT,
+    build_tombstone_tree_path, build_tree_path, decode_key_path_segments,
+    decode_path_target_segments, set_member_id, Target, LIST_VALUE_DIR, PATH_TARGET_SEPARATOR,
+    SET_VALUE_DIR, STRING_VALUE_BLOB, TOMBSTONE_BLOB, TOMBSTONE_ROOT,
 };
 
 type Key = (String, String, String); // (target_type, target_value, key)
@@ -1337,6 +1338,24 @@ fn parse_path_parts<'a>(parts: &'a [&'a str]) -> Result<(String, String, &'a [&'
         return Ok(("project".to_string(), "".to_string(), &parts[1..]));
     }
 
+    if target_type == "path" {
+        let separator_index = parts
+            .iter()
+            .position(|part| *part == PATH_TARGET_SEPARATOR)
+            .ok_or_else(|| anyhow::anyhow!("path target missing separator: {:?}", parts))?;
+
+        if separator_index < 2 || separator_index + 1 >= parts.len() {
+            anyhow::bail!("invalid path target layout: {:?}", parts);
+        }
+
+        let target_value = decode_path_target_segments(&parts[1..separator_index])?;
+        return Ok((
+            target_type.to_string(),
+            target_value,
+            &parts[separator_index + 1..],
+        ));
+    }
+
     if parts.len() < 4 {
         anyhow::bail!("path too short for sharded target: {:?}", parts);
     }
@@ -1401,6 +1420,15 @@ mod tests {
 
     fn string_value(value: &str) -> TreeValue {
         TreeValue::String(value.to_string())
+    }
+
+    #[test]
+    fn test_parse_path_parts_for_path_target() {
+        let parts = ["path", "src", "~__generated", "file.rs", "__target__", "owner", "__value"];
+        let (target_type, target_value, key_parts) = parse_path_parts(&parts).unwrap();
+        assert_eq!(target_type, "path");
+        assert_eq!(target_value, "src/__generated/file.rs");
+        assert_eq!(key_parts, &["owner", "__value"]);
     }
 
     #[test]

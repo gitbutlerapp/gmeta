@@ -386,6 +386,40 @@ fn test_serialize_creates_ref() {
 }
 
 #[test]
+fn test_serialize_path_target_uses_raw_segments_and_separator() {
+    let (dir, _sha) = setup_repo();
+
+    gmeta(dir.path())
+        .args(["set", "path:src/__generated/file.rs", "owner", "schacon"])
+        .assert()
+        .success();
+
+    gmeta(dir.path()).args(["serialize"]).assert().success();
+
+    let repo = git2::Repository::open(dir.path()).unwrap();
+    let reference = repo.find_reference("refs/meta/local").unwrap();
+    let commit = reference.peel_to_commit().unwrap();
+    let tree = commit.tree().unwrap();
+
+    let expected_path = "path/src/~__generated/file.rs/__target__/owner/__value";
+
+    let mut found = false;
+    tree.walk(git2::TreeWalkMode::PreOrder, |root, entry| {
+        let full_path = format!("{}{}", root, entry.name().unwrap_or(""));
+        if full_path == expected_path {
+            let blob = repo.find_blob(entry.id()).unwrap();
+            let content = std::str::from_utf8(blob.content()).unwrap();
+            assert_eq!(content, "schacon");
+            found = true;
+        }
+        git2::TreeWalkResult::Ok
+    })
+    .unwrap();
+
+    assert!(found, "expected tree path not found in serialized tree");
+}
+
+#[test]
 fn test_project_target() {
     let (dir, _sha) = setup_repo();
 

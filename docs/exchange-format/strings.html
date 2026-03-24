@@ -54,8 +54,8 @@
 <h2 id="serialized-tree-shape">Serialized tree shape</h2>
 <p>For a string value, write the string to:</p>
 <p><code>[base]/&lt;key segments&gt;/__value</code></p>
-<p>Example:</p>
-<p><code>commit/13/&lt;full-target&gt;/agent/model/__value</code></p>
+<p>Examples:</p>
+<ul><li><code>commit/13/&lt;full-target&gt;/agent/model/__value</code></li><li><code>path/src/metrics/__target__/owner/__value</code></li></ul>
 <p>The blob contents are the raw string value.</p>
 <h2 id="tombstones">Tombstones</h2>
 <p>If a string key is removed, serialize a tombstone at:</p>

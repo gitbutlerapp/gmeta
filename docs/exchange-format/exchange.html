@@ -63,14 +63,15 @@
 <p>The commit message is not semantically important; the commit is mainly used for:</p>
 <ul><li>tree pointer</li><li>author identity</li><li>author date / commit date</li><li>ancestry for incremental materialization and merging</li></ul>
 <h2 id="tree-root-layout">Tree root layout</h2>
-<p>The base tree path for a target is:</p>
-<p><code>&lt;target-type&gt;/&lt;fanout&gt;/&lt;full-target-value&gt;</code></p>
+<p>The base tree path for a target is target-type dependent:</p>
+<ul><li><code>commit</code> → <code>&lt;target-type&gt;/&lt;first2-of-sha&gt;/&lt;full-target-value&gt;</code></li><li><code>branch</code> / <code>change-id</code> → <code>&lt;target-type&gt;/&lt;fanout&gt;/&lt;full-target-value&gt;</code></li><li><code>path</code> → <code>path/&lt;escaped path segments...&gt;/__target__</code></li><li><code>project</code> → <code>project</code></li></ul>
 <p>Fanout is target-type dependent:</p>
-<ul><li>for <code>commit</code>, use the first 2 characters of the commit SHA</li><li>for all other target types with a target value, use the first 2 hexadecimal characters of the SHA-1 hash of the target value</li></ul>
+<ul><li>for <code>commit</code>, use the first 2 characters of the commit SHA</li><li>for <code>branch</code> and <code>change-id</code>, use the first 2 hexadecimal characters of the SHA-1 hash of the target value</li><li>for <code>path</code>, do not hash the target value; serialize the path segments directly</li></ul>
 <p>Examples:</p>
-<ul><li><code>commit/13/13a7d29cde8f8557b54fd6474f547a56822180ae/...</code></li><li><code>branch/06/sc-branch-1-deadbeef/...</code></li></ul>
-<p>This keeps commit paths readable and naturally distributed by object id prefix, while still avoiding oversized top-level directories for arbitrary branch, path, or change-id targets.</p>
-<p><code>project</code> may be represented as a special well-known subtree because it has no user-facing target value.</p>
+<ul><li><code>commit/13/13a7d29cde8f8557b54fd6474f547a56822180ae/...</code></li><li><code>branch/06/sc-branch-1-deadbeef/...</code></li><li><code>path/src/metrics/__target__/owner/__value</code></li></ul>
+<p>For <code>path</code> targets, a reserved separator component <code>__target__</code> marks the end of the target path and the beginning of key segments. If a serialized path segment would begin with <code>__</code>, it must be escaped by prefixing it with <code>~</code>. To keep this reversible, a path segment beginning with <code>~</code> should also be escaped by prefixing it with <code>~</code>. Examples:</p>
+<ul><li>raw path segment <code>__generated</code> → serialized as <code>~__generated</code></li><li>raw path segment <code>~scratch</code> → serialized as <code>~~scratch</code></li></ul>
+<p>This keeps commit paths readable, preserves human-readable path targets, and still avoids ambiguity between serialized path targets and metadata structure.</p>
 <h2 id="key-path-layout">Key path layout</h2>
 <p>Under the target base path, key segments are serialized directly as path components.</p>
 <p>Metadata structure begins when a reserved <code>__*</code> component is encountered.</p>

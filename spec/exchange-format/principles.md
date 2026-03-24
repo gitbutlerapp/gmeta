@@ -40,8 +40,13 @@ Any path component beginning with `__` is reserved for gmeta structural metadata
 - `__list`
 - `__set`
 - `__tombstones`
+- `__target__`
 
 This means user keys can safely occupy normal path segments while gmeta can still recognize where value metadata begins.
+
+For `path` targets specifically, the raw target path is serialized as tree path components followed by `__target__`.
+If a raw path segment begins with `__`, it must be escaped with a leading `~` so it cannot be confused with structural metadata.
+A segment beginning with `~` should also be escaped with a leading `~` to keep the encoding reversible.
 
 ## 5. Merge by independently addressable units
 

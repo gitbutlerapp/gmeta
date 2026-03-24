@@ -40,9 +40,10 @@ Where `<entry-id>` is of the form:
 
 `<timestamp-ms>-<content-hash-prefix>`
 
-Example:
+Examples:
 
-`branch/06/sc-branch-1-deadbeef/agent/chat/__list/1771232450203-23c0f`
+- `branch/06/sc-branch-1-deadbeef/agent/chat/__list/1771232450203-23c0f`
+- `path/src/metrics/__target__/comments/__list/1771232450203-23c0f`
 
 Each blob contains one string entry.
 

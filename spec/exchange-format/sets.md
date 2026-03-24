@@ -47,7 +47,7 @@ The `__value` blob contains the raw original string member.
 
 Example:
 
-`path/83/src/metrics/owners/__set/8f14e45fceea167a5a36dedd4bea2543.../__value`
+`path/src/metrics/__target__/owners/__set/8f14e45fceea167a5a36dedd4bea2543.../__value`
 
 This avoids path encoding issues and makes lookup stable.
 

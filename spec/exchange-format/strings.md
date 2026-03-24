@@ -23,9 +23,10 @@ For a string value, write the string to:
 
 `[base]/<key segments>/__value`
 
-Example:
+Examples:
 
-`commit/13/<full-target>/agent/model/__value`
+- `commit/13/<full-target>/agent/model/__value`
+- `path/src/metrics/__target__/owner/__value`
 
 The blob contents are the raw string value.
 

@@ -61,8 +61,9 @@
 <h2 id="4-key-path-reservation">4. Key path reservation</h2>
 <p>Keys are serialized directly under the target base path; there is no dedicated <code>k/</code> subtree.</p>
 <p>To keep the tree layout unambiguous, key segments must not start with <code>__</code>. Any path component beginning with <code>__</code> is reserved for gmeta structural metadata such as:</p>
-<ul><li><code>__value</code></li><li><code>__list</code></li><li><code>__set</code></li><li><code>__tombstones</code></li></ul>
+<ul><li><code>__value</code></li><li><code>__list</code></li><li><code>__set</code></li><li><code>__tombstones</code></li><li><code>__target__</code></li></ul>
 <p>This means user keys can safely occupy normal path segments while gmeta can still recognize where value metadata begins.</p>
+<p>For <code>path</code> targets specifically, the raw target path is serialized as tree path components followed by <code>__target__</code>. If a raw path segment begins with <code>__</code>, it must be escaped with a leading <code>~</code> so it cannot be confused with structural metadata. A segment beginning with <code>~</code> should also be escaped with a leading <code>~</code> to keep the encoding reversible.</p>
 <h2 id="5-merge-by-independently-addressable-units">5. Merge by independently addressable units</h2>
 <p>The main design strategy is to avoid large monolithic blobs for values that may be concurrently mutated.</p>
 <p>In practice:</p>

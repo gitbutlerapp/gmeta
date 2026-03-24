@@ -61,8 +61,8 @@
 <p><code>[base]/&lt;key segments&gt;/__list/&lt;entry-id&gt;</code></p>
 <p>Where <code>&lt;entry-id&gt;</code> is of the form:</p>
 <p><code>&lt;timestamp-ms&gt;-&lt;content-hash-prefix&gt;</code></p>
-<p>Example:</p>
-<p><code>branch/06/sc-branch-1-deadbeef/agent/chat/__list/1771232450203-23c0f</code></p>
+<p>Examples:</p>
+<ul><li><code>branch/06/sc-branch-1-deadbeef/agent/chat/__list/1771232450203-23c0f</code></li><li><code>path/src/metrics/__target__/comments/__list/1771232450203-23c0f</code></li></ul>
 <p>Each blob contains one string entry.</p>
 <p>If multiple values are inserted in one command, start from one base millisecond timestamp and increment by 1 for each additional entry so local order is preserved.</p>
 <h2 id="ordering">Ordering</h2>

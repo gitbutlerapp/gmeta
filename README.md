@@ -81,6 +81,18 @@ To make one final comparison to `git notes`: with notes, you have a single targe
 > [!NOTE]
 > Technically, the notes target does not need to be a commit, it can be any git object, but associating metadata with a tag, blob or tree tends not to be very useful in practice.
 
+### Value types
+
+There are three different value data types that are in this initial implementation, though the design would allow for other types in future spec versions.
+
+The initial data types are strings, lists and sets.
+
+Strings are meant to be a single blob, generally something small like an agent model or gpg signature.
+
+Lists are meant to be generally append only collections, like comments or chunked agent transcriptions.
+
+Sets are meant to be short, unordered groups of unique values, like a set of code owners.
+
 ### Simple Example - Strings
 
 So, for example, you could set a property called `agent:model` on a specific commit:
@@ -108,36 +120,58 @@ agent:prompt  Make me a sandwich
 agent:transcript  ...
 ```
 
-Attaching metadata to a commit is somewhat familiar, but there are other target types. For example, you could use a `path` target to associate a code owner to a subdirectory (rather than using a CODEOWNERS file):
+Attaching metadata to a commit is somewhat familiar, but there are other target types. For example, you could use a `path` target to associate agent rules to a subdirectory (rather than using multiple AGENT.md files):
 
 ```
-❯ gmeta set path:src/git owner schacon
-❯ gmeta set path:src/observability owner caleb
-❯ gmeta set path:src/metrics owner kiril
+❯ gmeta set path:src/git agent:rules -F GIT_AGENT.md
+❯ gmeta set path:src/observability agent:rules -F OBS_AGENT.md
+❯ gmeta set path:src/metrics agent:rules -F METRICS_AGENT.md
 ```
 
-And see all the path owner values:
+And see all the agent rules values per subdirectory under `src/`:
 
 ```
-❯ gmeta get path:src owner
-src/git;owner schacon
-src/observability;owner caleb
-src/metrics;owner kiril
+❯ gmeta get path:src agent:rules
+src/git;agent:rules "git agent rules"
+src/observability;agent:rules "observability agent rules"
+src/metrics;agent:rules "metrics agent rules"
 ```
 
 ### Simple Example - Lists
 
-The other value type is a list, for cases like code owners or maybe comments - where you would be maintaining a list of values for the key (multiple code owners, a growing list of comments):
+The list data type is for for cases like chunked transcripts or comments - where you would be maintaining a generally appended list of values for the key.
 
 ```
-❯ gmeta list:push path:src/metrics owners schacon
+❯ gmeta list:push branch:sc-feature-1 review:comments "love it"
 
-❯ gmeta list:push path:src/metrics owners caleb
+❯ gmeta list:push branch:sc-feature-1 review:comments "like it"
 
-❯ gmeta list:push path:src/metrics owners kiril
+❯ gmeta list:push branch:sc-feature-1 review:comments "now I hate it"
 
-❯ gmeta get path:src/metrics owners
-owners ["schacon", "caleb", "kiril"]
+❯ gmeta get branch:sc-feature-1 review
+review:comments  ["love it", "like it", "now I hate it"]
+```
+
+### Simple Example - Sets
+
+The set data type is for a set of unordered values, for example, a set of code owners for a path.
+
+```
+❯ gmeta set:add path:src/metrics owners schacon
+
+❯ gmeta set:add path:src/metrics owners caleb
+
+❯ gmeta set:add path:src/metrics owners kiril
+
+❯ gmeta get path:src
+src/metrics;owners ["caleb", "kiril", "schacon"]
+
+❯ gmeta set:rm path:src/metrics owners kiril
+
+❯ gmeta set:add path:src/metrics owners caleb
+
+❯ gmeta get path:src
+src/metrics;owners ["caleb", "schacon"]
 ```
 
 ### Data storage
@@ -175,14 +209,15 @@ Serializing the data takes the targets, keys and values from SQLite and put them
 So, for example, setting `agent:model` to 'claude' on commit `13a7d29` would serialize roughly to this:
 
 ```
+
 ❯ git ls-tree -r refs/meta/local
-100644 blob a76e08d661b081b4e618e7e61066c879056c8f18 commit/13/a7d29cde8f8557b54fd6474f547a56822180ae/agent/model/__value
+100644 blob a76e08d661b081b4e618e7e61066c879056c8f18 commit/13/a7d29cde8f8557b54fd6474f547a56822180ae/agent/model/\_\_value
 
 ❯ git cat-file -p a76e08d66
 claude
 ```
 
-Key segments cannot start with `__`, so we can differentiate keys from other values.
+Key segments cannot start with `__`, so we can differentiate keys from other values. If there needs to be that prefix, it will be escaped in the keys.
 
 Lists are handled slightly differently. Instead of `__value` as a blob at the termination of a key sequence, it is a tree called `__list` that has timestamped, hashed entries. So, for example, if you added two code owners to a path:
 
@@ -256,7 +291,7 @@ As we'll see later, we will not assume that missing data means it should be dele
 
 One of the main driving points of this problem set is keeping prompts and transcripts for agentic work. As many solutions have already started finding out, this data adds up fast.
 
-I've already seen projects trying to keep agentic transcript metadata where in less than 3 months, a codebase of 400 files and 2k commits with an entire Git code history clone of 14Mb has already accrued over 2.5Gb of transcripts data. A clone with the metadata expands from a 5Mb packfile without to a 500Mb packfile with.
+I've already seen projects trying to keep agentic transcript metadata where in less than 3 months, a codebase of 400 files and 2k commits with an entire Git code history clone of 14Mb has already accrued over 2.5Gb of transcripts data. A clone with the metadata expands from a 5Mb packfile without, to a 500Mb packfile with.
 
 So, how do we deal with the problem of large amounts of metadata in Git?
 
@@ -266,7 +301,9 @@ This project proposes two solutions, though only the first will probably general
 
 Getting every transcript for every commit in your entire codebase is probably not what you generally need. What you probably _generally_ want locally is recent transcripts and global or project wide data (codeowners, etc).
 
-One of the cool things about recent (well, for almost a decade now - [2.19](https://github.blog/open-source/git/highlights-from-git-2-19/#user-content-partial-clones)?) versions of Git is that we can do blobless history clones and get just the blobs we actually want on demand with promisor remotes. This means that instead of downloading all of the values for a large history or a history with many large blobs, we can just get all the commits/trees and then ask for a subset of blobs that we think we may need soonish (which we can store as the tree of the latest commit).
+One of the cool things about recent (well, for almost a decade now - [2.19](https://github.blog/open-source/git/highlights-from-git-2-19/#user-content-partial-clones)?) versions of Git is that we can do blobless history clones and get just the blobs we actually want on demand with promisor remotes.
+
+This means that instead of downloading all of the values for a large history or a history with many large blobs, we can just get all the commits/trees and then ask for a subset of blobs that we think we may need soonish (which we can store as the tree of the latest commit).
 
 Interestingly, as a benchmark for what that means, for the previous example of 500mb of compressed transcript data over 2k commits, a blobless clone would have been less than 2mb. The commits and trees are not the problem for a long, long while.
 
@@ -279,7 +316,7 @@ There are a few different ways we could practically do this:
 
 Our proposed solution is the second - to occasionally prune the tree that the head commit tree contains to a subset of data that is likely to be needed shortly. These "prune" commits will have a special commit message trailer that informs the system that there was a pruning action so if we're trying to calcuate the existance of older values, we can skip it.
 
-In practice, this means having a ruleset where after a certain size of subtrees, the system could automatically prune the tree to a much smaller set and push that as the new head. If it's a non-fast-forward and in the new range there is another pruned commit, then we recalucate and don't do another prune.
+In practice, this means having a ruleset where after a certain size of subtrees, the system could automatically prune the tree to a much smaller set and push that as the new head. If it's a non-fast-forward and in the new range there is another pruned commit, then we recalculate and don't do another prune.
 
 This means that we would constantly have a range of acceptable amounts of data that is a starting set, with a history that would be able to reconstruct the full dataset if we really wanted it, and we could always ask for only the subsets of data that we need to do specific operations, since the Git server protocol has supported fetching a list of specific blobs for some time now.
 
@@ -294,32 +331,34 @@ I was able to reconstruct the entire list of 550k commit shas that contained met
 ```
 generating 10000 commits…
 generation complete
-  normal commits  9880
-  prune commits   120
-  unique SHAs     549932  (ground truth)
-  live at tip     4332
+normal commits 9880
+prune commits 120
+unique SHAs 549932 (ground truth)
+live at tip 4332
 
 walk results
-  commits visited        10000
-  prune commits seen     120
-  SHAs recovered         549932
-  correctness            ✓ exact match (549932 SHAs)
+commits visited 10000
+prune commits seen 120
+SHAs recovered 549932
+correctness ✓ exact match (549932 SHAs)
 
 $ time git log --stat 054630093092 > /dev/null
-git log --stat 054630093092 > /dev/null  15.84s user 0.26s system 99% cpu 16.134 total
+git log --stat 054630093092 > /dev/null 15.84s user 0.26s system 99% cpu 16.134 total
 ```
 
 This is a dumb algorithm that will not skip the prune commits, so in reality it should be slightly faster.
 
-So let's say we do a fast blobless fetch on initialization and then fetch a "working set" of data so most reasonable queries would be quite fast, even on large history sets on large and long-lived codebases.
+So let's say we do a fast blobless fetch on initialization and then fetch a "working set" of data (all the blobs in the latest commit's tree) so most reasonable queries would be quite fast, even on large history sets on large and long-lived codebases.
 
 On initialization, we could kick of a background job that goes through said history and compiles a comprehensive list of target/values and blob-shas that we _don't_ have if there have been pruning events. When we need one or many of those values, we can use the promisor remote feature to fetch groups of them on demand, rather efficiently.
 
-In my benchmarks, this should prove to be a solution that works fast and effiently even for very large, long metadata histories.
+In my benchmarks, this should prove to be a solution that works reasonably fast and effiently even for very large, long metadata histories.
 
 ### Branch Metadata
 
-There is an interesting sidepoint which is what about branch metadata? In theory, it would be best to only store metadata about commits that _exist_ in the current history, but it will clearly be neccesary (and arguably most helpful) to exchange data about branches in flight that have not landed yet.
+There is an interesting sidepoint which is what about branch metadata?
+
+In theory, it would be best to only store metadata about commits that _exist_ in the current history, but it will clearly be neccesary (and arguably most helpful) to exchange data about branches in flight that have not landed yet.
 
 In this scheme, I think it works best to push all metadata on any push to the associated remote. So metadata on a commit or range of commits that end up for some reason not being merged would still be in the history. However, if a branch is deleted, one could remove those entries from the next tree pushed so new sparse clones don't get the unneeded data. In the long run, the data would still take up space on the server but would in practicality never be fetched via promisor.
 
@@ -343,13 +382,15 @@ One is to have private metadata accessible differently from public metadata. Per
 
 Another is the ability to split up very, very long histories. Perhaps every year, you split the metadata history so even the blobless clone is smaller but can expand it with other accessible refs if you _really_ want to.
 
-A third is to have data that is just for _you_ and not for your team or the public. Perahps you're not comfortable sharing your prompts and transcripts, but you _do_ want to back them up or access them on other machines.
+A third is for monorepos. Perhaps you wish to store metadata for subdirectories of a monorepo in different places or even with different access permissions.
+
+A fourth is to have data that is just for _you_ and not for your team or the public. Perhaps you're not comfortable sharing your prompts and transcripts, but you _do_ want to back them up or access them on other machines.
 
 The difficulty is not really in reading the union of values from multiple refs into one database, the difficulty is knowing which new values should be written to refs bound for which remote reference.
 
 If I add a transcript to a commit, how do I tell the system that this data is for my 'public', 'corporate' or 'personal' metadata source?
 
-Honestly, this is an implementation detail, not an exchange format problem and would likely not be something kept in the exchnage data.
+Honestly, this is an implementation detail, not an exchange format problem and would likely not be something kept in the exchange data.
 
 Most likely, an implementation would have a ruleset filter for writing that says keys that match a specific rule or regex go into destination A or B on serialize. From a reading perspective, I can't think of a situation where it would matter which source a metadata value came from, so I don't think the filter would be there.
 
@@ -360,14 +401,14 @@ When there are multiple metadata remotes, the local heads would be kept under re
 With multiple remotes, the meta refs structure might look like this:
 
 ```
+
 ❯ tree .git/refs/meta
 .git/meta
 ├── local
 │   ├── public
 │   └── private
 └─── remotes
-    ├── public
-    └── private
-```
+   ├── public
+   └── private
 
-## Benchmarking
+```
