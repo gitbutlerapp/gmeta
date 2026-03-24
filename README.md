@@ -4,6 +4,10 @@ This is the spec and reference implementation for my proposal for a generic meta
 
 This project's goal is to implement, benchmark and exercise a metadata system that is more flexible, scalable and useable than `git notes` that can we implemented by multiple systems.
 
+> [!IMPORTANT]
+> The canonical specification now lives in [spec/README.md](./spec/README.md).
+> If you are looking for the current format, semantics, merge behavior, CLI shape, or value-type definitions, start there.
+
 ## High Level Goals
 
 I think the high level goals of this project were best laid out by Rodrigo Bovendorp's Jujutsu day talk in 2025, [Version-controlling metadata](https://www.youtube.com/watch?v=46bV6KT0SsQ&list=PLOU2XLYxmsILM5cRwAK6yKdtKnCK6Y4Oh&index=4), so here is an overview of what he laid out in that talk:

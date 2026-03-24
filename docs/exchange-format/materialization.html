@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Materialization and merge workflow · gmeta</title>
+    <meta name="description" content="gmeta project documentation generated from the canonical spec markdown files.">
+    <link rel="stylesheet" href="../assets/style.css">
+    <script>
+      (() => {
+        const stored = localStorage.getItem('gmeta-theme');
+        document.documentElement.dataset.theme = stored || 'system';
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar-main">
+          <a class="brand" href="../index.html">gmeta</a>
+          <p class="tagline">Git metadata specification and project docs</p>
+          <nav class="nav">
+            <div class="nav-group"><a href="../index.html">Overview</a></div><div class="nav-group"><h2>Exchange format</h2><a href="targets.html">Targets and keys</a><a href="exchange.html">Exchange format and refs</a><a class="active" href="materialization.html">Materialization and merge workflow</a></div><div class="nav-group"><h2>Value types</h2><a href="principles.html">Shared principles</a><a href="strings.html">Strings</a><a href="lists.html">Lists</a><a href="sets.html">Sets</a></div><div class="nav-group"><h2>Implementation specific</h2><a href="../implementation-specific/storage.html">Local storage</a><a href="../implementation-specific/cli.html">CLI surface</a><a href="../implementation-specific/output.html">Output and query semantics</a><a href="../implementation-specific/workflow.html">Workflow</a></div>
+          </nav>
+        </div>
+        <div class="sidebar-footer">
+          <div class="theme-control" aria-label="Theme switcher">
+            <button type="button" class="theme-icon-button" data-theme-value="light" aria-label="Use light theme" title="Light theme">
+              <span aria-hidden="true">☀️</span>
+            </button>
+            <button type="button" class="theme-icon-button" data-theme-value="dark" aria-label="Use dark theme" title="Dark theme">
+              <span aria-hidden="true">🌙</span>
+            </button>
+          </div>
+          <button type="button" class="sidebar-toggle" aria-label="Collapse sidebar" title="Collapse sidebar">
+            <span class="collapse-icon" aria-hidden="true">◧</span>
+          </button>
+        </div>
+      </aside>
+      <main class="content">
+        <header class="page-header">
+          <div class="page-header-main">
+            <div class="eyebrow">Generated from <a href="https://github.com/schacon/gmeta/tree/main/spec"><code>spec/*.md</code></a></div>
+            <h1>Materialization and merge workflow</h1>
+          </div>
+        </header>
+        <article class="doc-content">
+          <p>This document describes the exchange-level rules for turning serialized metadata commits back into local current state.</p>
+<p>For higher-level coordination with a version control system&#x27;s push and pull operations, see <a href="../implementation-specific/workflow.html">Workflow</a>.</p>
+<h2 id="materialize-responsibilities">Materialize responsibilities</h2>
+<p>When materializing a remote metadata head, gmeta must:</p>
+<ol>
+<li>merge that head into local metadata history</li>
+<li>resolve merge conflicts according to value-type semantics</li>
+<li>update the local SQLite database with newly visible values and tombstones</li>
+<li>record when materialization succeeded</li>
+</ol>
+<p>Per-type conflict rules are defined in:</p>
+<ul>
+<li><a href="strings.html">Strings</a></li>
+<li><a href="lists.html">Lists</a></li>
+<li><a href="sets.html">Sets</a></li>
+</ul>
+<h2 id="high-level-scenarios">High-level scenarios</h2>
+<h3 id="1-initial-sync">1. Initial sync</h3>
+<p>If the local system has no metadata yet:</p>
+<ul>
+<li>walk the tree at the incoming metadata head</li>
+<li>materialize all visible values into SQLite</li>
+<li>record that metadata commit as materialized</li>
+</ul>
+<p>No metadata history walk is required beyond the current tree.</p>
+<h3 id="2-multiple-start-points">2. Multiple start points</h3>
+<p>If local metadata exists and someone else already pushed an independently initialized metadata history:</p>
+<ul>
+<li>serialize local shareable state</li>
+<li>perform a baseless two-way merge with the remote tree</li>
+<li>for overlapping keys, remote wins</li>
+<li>write a new metadata commit with the remote head as parent</li>
+<li>retry if the remote advanced before push completed</li>
+</ul>
+<p>This allows eventual convergence while keeping history linear.</p>
+<h3 id="3-fast-forward-update">3. Fast-forward update</h3>
+<p>If the incoming metadata ref is a fast-forward from the last materialized point:</p>
+<ul>
+<li>diff the old materialized tree against the new tree</li>
+<li>apply only changed paths to SQLite</li>
+<li>add or update visible values</li>
+<li>apply tombstones</li>
+<li>record the new materialized commit</li>
+</ul>
+<p>This is the common efficient update path.</p>
+<h3 id="4-both-sides-mutated-data">4. Both sides mutated data</h3>
+<p>If local data changed and remote data also changed:</p>
+<ul>
+<li>serialize local current shareable state</li>
+<li>merge the remote tree into it</li>
+<li>resolve conflicts according to per-type semantics</li>
+<li>write a new metadata commit from the merged tree</li>
+<li>retry against newer remote heads until a fast-forward push succeeds</li>
+</ul>
+<h2 id="no-common-ancestor-merge">No common ancestor merge</h2>
+<p>If local and remote metadata histories have no common ancestor, materialize uses a two-way merge instead of a three-way merge.</p>
+<p>Policy:</p>
+<ol>
+<li>union non-conflicting keys from both sides</li>
+<li>for overlapping keys or value-vs-tombstone conflicts, remote wins</li>
+<li>retain non-overlapping keys from both sides</li>
+</ol>
+<p><code>gmeta materialize --dry-run</code> should report this explicitly, for example:</p>
+<ul>
+<li><code>strategy=two-way-no-common-ancestor</code></li>
+</ul>
+<p>and should print key-level conflict decisions.</p>
+<h2 id="removal-handling">Removal handling</h2>
+<p>Deletion is explicit.</p>
+<p>During materialization:</p>
+<ul>
+<li>whole-key tombstones remove keys locally and are recorded in SQLite</li>
+<li>per-entry or per-member tombstones are applied according to the collection type</li>
+</ul>
+<h3 id="legacy-compatibility">Legacy compatibility</h3>
+<p>During fast-forward materialization, implementations may also detect keys that existed in the previous local tree but are missing from the incoming tree and remove them locally for compatibility with old metadata histories that predate tombstones.</p>
+<p>This should be treated as a compatibility bridge, not the long-term deletion model.</p>
+<h2 id="serialization-after-materialization">Serialization after materialization</h2>
+<p>After a successful materialization, later serialization can use local bookkeeping to update only values changed since the last materialized point.</p>
+<p>This is an optimization, not a semantic requirement.</p>
+<h2 id="metadata-history-shape">Metadata history shape</h2>
+<p>Unlike source-code history, metadata history does not need rich branch/merge topology.</p>
+<p>The preferred shape is linear history created by repeatedly:</p>
+<ul>
+<li>merging in memory</li>
+<li>writing a new commit</li>
+<li>fast-forward pushing</li>
+</ul>
+<p>The main goal is convergence on current metadata state, not preserving meaningful branch structure.</p>
+        </article>
+      </main>
+    </div>
+    <script>
+      (() => {
+        const root = document.documentElement;
+        const sidebar = document.querySelector('.sidebar');
+        const themeButtons = document.querySelectorAll('.theme-icon-button');
+        const sidebarToggle = document.querySelector('.sidebar-toggle');
+        const media = window.matchMedia('(prefers-color-scheme: dark)');
+
+        function currentTheme() {
+          return localStorage.getItem('gmeta-theme') || 'system';
+        }
+
+        function applyTheme(theme) {
+          root.dataset.theme = theme;
+          const effective = theme === 'system' ? (media.matches ? 'dark' : 'light') : theme;
+          themeButtons.forEach((button) => {
+            button.classList.toggle('active', button.dataset.themeValue === effective);
+          });
+        }
+
+        function currentSidebarState() {
+          return localStorage.getItem('gmeta-sidebar') || 'expanded';
+        }
+
+        function applySidebarState(state) {
+          const collapsed = state === 'collapsed';
+          sidebar.classList.toggle('collapsed', collapsed);
+          document.body.classList.toggle('sidebar-collapsed', collapsed);
+          sidebarToggle.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+          sidebarToggle.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+        }
+
+        themeButtons.forEach((button) => {
+          button.addEventListener('click', () => {
+            localStorage.setItem('gmeta-theme', button.dataset.themeValue);
+            applyTheme(button.dataset.themeValue);
+          });
+        });
+
+        sidebarToggle.addEventListener('click', () => {
+          const next = currentSidebarState() === 'collapsed' ? 'expanded' : 'collapsed';
+          localStorage.setItem('gmeta-sidebar', next);
+          applySidebarState(next);
+        });
+
+        media.addEventListener?.('change', () => {
+          if (currentTheme() === 'system') {
+            applyTheme('system');
+          }
+        });
+
+        applyTheme(currentTheme());
+        applySidebarState(currentSidebarState());
+      })();
+    </script>
+  </body>
+</html>
