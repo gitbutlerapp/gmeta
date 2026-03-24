@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 import html
 import os
 import re
 import shutil
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -514,7 +516,7 @@ def build_nav(pages: list[Page], current_page: Page) -> str:
     return "".join(groups)
 
 
-def main() -> None:
+def generate_docs() -> None:
     pages = build_pages()
     page_map = {page.source_rel: page.output_rel for page in pages}
     template = TEMPLATE_PATH.read_text()
@@ -542,6 +544,53 @@ def main() -> None:
         page.output_path.write_text(rendered)
 
     print(f"Generated {len(pages)} documentation pages in {DOCS_DIR}")
+
+
+def watch_signature() -> tuple[tuple[str, int], ...]:
+    return tuple(
+        sorted(
+            (str(path.relative_to(ROOT)), path.stat().st_mtime_ns)
+            for path in SPEC_DIR.rglob("*.md")
+            if path.is_file()
+        )
+    )
+
+
+def watch_docs(interval: float) -> None:
+    generate_docs()
+    last_signature = watch_signature()
+    print(f"Watching {SPEC_DIR} for changes every {interval:.1f}s")
+
+    while True:
+        time.sleep(interval)
+        current_signature = watch_signature()
+        if current_signature == last_signature:
+            continue
+        last_signature = current_signature
+        try:
+            generate_docs()
+        except Exception as exc:
+            print(f"Doc generation failed: {exc}")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate gmeta docs from spec markdown")
+    parser.add_argument("-w", "--watch", action="store_true", help="watch spec/ for changes and regenerate docs")
+    parser.add_argument(
+        "--interval",
+        type=float,
+        default=0.5,
+        help="polling interval in seconds for --watch mode (default: 0.5)",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    if args.watch:
+        watch_docs(args.interval)
+    else:
+        generate_docs()
 
 
 if __name__ == "__main__":

@@ -9,7 +9,13 @@ This is a proposed specification for a new standardized way to attach and exchan
 
 This is a proposal to provide a more flexible and scalable metadata system for Git projects than the tools Git commonly uses today such as `git notes`, commit headers, message trailers, and checked-in helper files like `CODEOWNERS`.
 
+> [!NOTE]
+> Test callout 2: on wide screens, generated docs should render this in a right-hand column instead of inline.
+
 Those existing approaches tend to have some important limitations:
+
+> [!NOTE]
+> Test callout 3: on wide screens, generated docs should render this in a right-hand column instead of inline.
 
 - limited control over metadata granularity and mutability
 - poor support for many independently addressable fields on the same object
