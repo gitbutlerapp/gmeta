@@ -1,41 +1,19 @@
 # Exchange format and refs
 
-This document describes how gmeta serializes metadata into Git and where it is stored.
+This document describes how to serialize metadata into Git primatives and where that data is to be stored.
 
 ## Goals
 
 The exchange format should:
 
-- work over existing Git transport
-- use Git trees and commits directly
+- work over existing Git transport (use git tree and commit structures)
 - diff efficiently
 - merge structurally where possible
 - reconstruct current shareable state during materialization
 
-Only the latest shareable state needs to be serialized. Full local mutation history does not.
-
-## Refs
-
-Local serialized metadata head:
-
-- `refs/meta/local`
-
-If `meta.namespace` Git config is set, that namespace should be used instead of `meta`.
-
-Fetched remote metadata heads should be stored under a remote-specific namespace, for example:
-
-- `refs/meta/remotes/origin`
-
-If multiple local metadata destinations are supported later, the local layout may expand to directory-shaped refs such as:
-
-- `refs/meta/local/public`
-- `refs/meta/local/private`
-
 ## Commit model
 
 Serialization writes a Git commit whose tree contains the current shareable metadata state.
-
-The commit message is not semantically important; the commit is mainly used for:
 
 - tree pointer
 - author identity
@@ -54,8 +32,8 @@ The base tree path for a target is target-type dependent:
 Fanout is target-type dependent:
 
 - for `commit`, use the first 2 characters of the commit SHA
-- for `branch` and `change-id`, use the first 2 hexadecimal characters of the SHA-1 hash of the target value
 - for `path`, do not hash the target value; serialize the path segments directly
+- for anything else (`branch`, `change-id`), use the first 2 hexadecimal characters of the SHA-1 hash of the target value (ie, the branch name or change-id value)
 
 Examples:
 
@@ -93,20 +71,40 @@ Per-type layouts are defined in:
 - [Lists](./lists.md)
 - [Sets](./sets.md)
 
-## Serialization policy
+## Key path reservation
 
-Serialization takes local current state and writes a new Git tree/commit representing the latest shareable metadata view.
+Keys are serialized directly under the target base path.
 
-A later optimization may serialize only values changed since the last successful materialization or serialize by reusing unchanged subtrees.
+Any path component beginning with `__` is reserved for gmeta structural paths such as:
 
-## Why trees instead of structured blobs
+- `__value`
+- `__list`
+- `__set`
+- `__tombstones`
+- `__target__` (used only as the separator inside serialized `path` targets)
 
-The exchange format prefers many independently addressable paths over one large JSON blob because:
+This means user keys occupy normal path segments and metadata structure begins when a reserved `__*` path component is encountered.
 
-- Git diffs trees efficiently
-- Git merges non-overlapping paths naturally
-- list entries and set members can merge as unions instead of blob conflicts
-- large append-only data can be chunked
+## Path target encoding
+
+`path` targets are serialized using their raw path segments rather than a hash-derived fanout prefix.
+
+Shape:
+
+`path/<escaped path segments...>/__target__/...`
+
+Rules:
+
+- each `/`-separated path component becomes one tree path component
+- `__target__` marks the end of the target path and the beginning of key segments
+- if a path segment begins with `__`, escape it by prefixing the segment with `~`
+- if a path segment begins with `~`, also escape it by prefixing the segment with `~`
+
+Examples:
+
+- `path:src/metrics` → `path/src/metrics/__target__/...`
+- `path:src/__generated/file.rs` → `path/src/~__generated/file.rs/__target__/...`
+- `path:src/~scratch/file.rs` → `path/src/~~scratch/file.rs/__target__/...`
 
 ## Explicit deletion
 
@@ -124,7 +122,7 @@ A single reserved `__tombstones` namespace is used for both whole-key and child-
 
 ## Large-data considerations
 
-This format is intended to work with blobless / partial clone workflows.
+This format is intended to work specifically with blobless / partial clone workflows.
 
 Large metadata histories can remain practical because:
 
@@ -133,4 +131,21 @@ Large metadata histories can remain practical because:
 - recent or important working sets can be prioritized
 - pruning strategies can reduce tip tree size without losing reconstructability of older introduced metadata
 
-A future pruning/checkpoint scheme may periodically shrink the visible tip tree while retaining enough history to reconstruct older metadata when needed.
+## Refs
+
+When serializing metadata, the commit/tree produced updates a local metadata ref so it can be pushed.
+
+The local serialized metadata head by default should be:
+
+- `refs/meta/local`
+
+If `meta.namespace` Git config is set, that namespace should be used instead of `meta`.
+
+Fetched remote metadata heads should be stored under a remote-specific namespace, for example:
+
+- `refs/meta/remotes/origin`
+
+If user has multiple local metadata destinations, the local layout would expand to directory-shaped refs such as:
+
+- `refs/meta/local/public`
+- `refs/meta/local/private`

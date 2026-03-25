@@ -48,7 +48,7 @@
           <p>This document describes the exchange-level rules for turning serialized metadata commits back into local current state.</p>
 <p>For higher-level coordination with a version control system&#x27;s push and pull operations, see <a href="../implementation/workflow.html">Workflow</a>.</p>
 <h2 id="materialize-responsibilities">Materialize responsibilities</h2>
-<p>When materializing a remote metadata head, gmeta must:</p>
+<p>When materializing a remote metadata head, the client must:</p>
 <ol><li>merge that head into local metadata history</li><li>resolve merge conflicts according to value-type semantics</li><li>update the local SQLite database with newly visible values and tombstones</li><li>record when materialization succeeded</li></ol>
 <p>Per-type conflict rules are defined in:</p>
 <ul><li><a href="strings.html">Strings</a></li><li><a href="lists.html">Lists</a></li><li><a href="sets.html">Sets</a></li></ul>

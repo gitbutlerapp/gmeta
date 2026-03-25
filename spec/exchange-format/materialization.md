@@ -6,7 +6,7 @@ For higher-level coordination with a version control system's push and pull oper
 
 ## Materialize responsibilities
 
-When materializing a remote metadata head, gmeta must:
+When materializing a remote metadata head, the client must:
 
 1. merge that head into local metadata history
 2. resolve merge conflicts according to value-type semantics

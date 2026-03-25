@@ -64,21 +64,8 @@
 <h2 id="key-validation">Key validation</h2>
 <p>To keep the exchange tree layout unambiguous, keys are strictly validated.</p>
 <p>Rules:</p>
-<ul><li>key cannot be empty</li><li>key segments cannot be empty</li><li>key segments cannot be <code>.</code> or <code>..</code></li><li>key segments cannot contain <code>/</code> or null bytes</li><li>key segments cannot start with <code>__</code></li></ul>
+<ul><li>key cannot be empty</li><li>key segments cannot be empty</li><li>key segments cannot be <code>.</code> or <code>..</code></li><li>key segments cannot contain <code>/</code>, <code>:</code>, or null bytes</li><li>key segments cannot start with <code>__</code></li></ul>
 <p>The last rule reserves all <code>__*</code> path components for gmeta structural metadata. If they are needed (for example, file paths), they can be escaped.</p>
-<h2 id="key-path-reservation">Key path reservation</h2>
-<p>Keys are serialized directly under the target base path.</p>
-<p>Any path component beginning with <code>__</code> is reserved for gmeta structural paths such as:</p>
-<ul><li><code>__value</code></li><li><code>__list</code></li><li><code>__set</code></li><li><code>__tombstones</code></li><li><code>__target__</code> (used only as the separator inside serialized <code>path</code> targets)</li></ul>
-<p>This means user keys occupy normal path segments and metadata structure begins when a reserved <code>__*</code> path component is encountered.</p>
-<h2 id="path-target-encoding">Path target encoding</h2>
-<p><code>path</code> targets are serialized using their raw path segments rather than a hash-derived fanout prefix.</p>
-<p>Shape:</p>
-<p><code>path/&lt;escaped path segments...&gt;/__target__/...</code></p>
-<p>Rules:</p>
-<ul><li>each <code>/</code>-separated path component becomes one tree path component</li><li><code>__target__</code> marks the end of the target path and the beginning of key segments</li><li>if a path segment begins with <code>__</code>, escape it by prefixing the segment with <code>~</code></li><li>if a path segment begins with <code>~</code>, also escape it by prefixing the segment with <code>~</code></li></ul>
-<p>Examples:</p>
-<ul><li><code>path:src/metrics</code> → <code>path/src/metrics/__target__/...</code></li><li><code>path:src/__generated/file.rs</code> → <code>path/src/~__generated/file.rs/__target__/...</code></li><li><code>path:src/~scratch/file.rs</code> → <code>path/src/~~scratch/file.rs/__target__/...</code></li></ul>
 <h2 id="value-types">Value types</h2>
 <p>Current and proposed value types:</p>
 <ul><li><code>string</code> — single scalar string value</li><li><code>list</code> — append-friendly ordered sequence of string entries</li><li><code>set</code> — unordered unique collection of string members</li></ul>

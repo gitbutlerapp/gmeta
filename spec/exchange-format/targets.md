@@ -49,45 +49,10 @@ Rules:
 - key cannot be empty
 - key segments cannot be empty
 - key segments cannot be `.` or `..`
-- key segments cannot contain `/` or null bytes
+- key segments cannot contain `/`, `:`, or null bytes
 - key segments cannot start with `__`
 
 The last rule reserves all `__*` path components for gmeta structural metadata. If they are needed (for example, file paths), they can be escaped.
-
-## Key path reservation
-
-Keys are serialized directly under the target base path.
-
-Any path component beginning with `__` is reserved for gmeta structural paths such as:
-
-- `__value`
-- `__list`
-- `__set`
-- `__tombstones`
-- `__target__` (used only as the separator inside serialized `path` targets)
-
-This means user keys occupy normal path segments and metadata structure begins when a reserved `__*` path component is encountered.
-
-## Path target encoding
-
-`path` targets are serialized using their raw path segments rather than a hash-derived fanout prefix.
-
-Shape:
-
-`path/<escaped path segments...>/__target__/...`
-
-Rules:
-
-- each `/`-separated path component becomes one tree path component
-- `__target__` marks the end of the target path and the beginning of key segments
-- if a path segment begins with `__`, escape it by prefixing the segment with `~`
-- if a path segment begins with `~`, also escape it by prefixing the segment with `~`
-
-Examples:
-
-- `path:src/metrics` → `path/src/metrics/__target__/...`
-- `path:src/__generated/file.rs` → `path/src/~__generated/file.rs/__target__/...`
-- `path:src/~scratch/file.rs` → `path/src/~~scratch/file.rs/__target__/...`
 
 ## Value types
 

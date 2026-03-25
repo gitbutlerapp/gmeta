@@ -45,28 +45,18 @@
           </div>
         </header>
         <article class="doc-content">
-          <p>This document describes how gmeta serializes metadata into Git and where it is stored.</p>
+          <p>This document describes how to serialize metadata into Git primatives and where that data is to be stored.</p>
 <h2 id="goals">Goals</h2>
 <p>The exchange format should:</p>
-<ul><li>work over existing Git transport</li><li>use Git trees and commits directly</li><li>diff efficiently</li><li>merge structurally where possible</li><li>reconstruct current shareable state during materialization</li></ul>
-<p>Only the latest shareable state needs to be serialized. Full local mutation history does not.</p>
-<h2 id="refs">Refs</h2>
-<p>Local serialized metadata head:</p>
-<ul><li><code>refs/meta/local</code></li></ul>
-<p>If <code>meta.namespace</code> Git config is set, that namespace should be used instead of <code>meta</code>.</p>
-<p>Fetched remote metadata heads should be stored under a remote-specific namespace, for example:</p>
-<ul><li><code>refs/meta/remotes/origin</code></li></ul>
-<p>If multiple local metadata destinations are supported later, the local layout may expand to directory-shaped refs such as:</p>
-<ul><li><code>refs/meta/local/public</code></li><li><code>refs/meta/local/private</code></li></ul>
+<ul><li>work over existing Git transport (use git tree and commit structures)</li><li>diff efficiently</li><li>merge structurally where possible</li><li>reconstruct current shareable state during materialization</li></ul>
 <h2 id="commit-model">Commit model</h2>
 <p>Serialization writes a Git commit whose tree contains the current shareable metadata state.</p>
-<p>The commit message is not semantically important; the commit is mainly used for:</p>
 <ul><li>tree pointer</li><li>author identity</li><li>author date / commit date</li><li>ancestry for incremental materialization and merging</li></ul>
 <h2 id="tree-root-layout">Tree root layout</h2>
 <p>The base tree path for a target is target-type dependent:</p>
 <ul><li><code>commit</code> → <code>&lt;target-type&gt;/&lt;first2-of-sha&gt;/&lt;full-target-value&gt;</code></li><li><code>branch</code> / <code>change-id</code> → <code>&lt;target-type&gt;/&lt;fanout&gt;/&lt;full-target-value&gt;</code></li><li><code>path</code> → <code>path/&lt;escaped path segments...&gt;/__target__</code></li><li><code>project</code> → <code>project</code></li></ul>
 <p>Fanout is target-type dependent:</p>
-<ul><li>for <code>commit</code>, use the first 2 characters of the commit SHA</li><li>for <code>branch</code> and <code>change-id</code>, use the first 2 hexadecimal characters of the SHA-1 hash of the target value</li><li>for <code>path</code>, do not hash the target value; serialize the path segments directly</li></ul>
+<ul><li>for <code>commit</code>, use the first 2 characters of the commit SHA</li><li>for <code>path</code>, do not hash the target value; serialize the path segments directly</li><li>for anything else (<code>branch</code>, <code>change-id</code>), use the first 2 hexadecimal characters of the SHA-1 hash of the target value (ie, the branch name or change-id value)</li></ul>
 <p>Examples:</p>
 <ul><li><code>commit/13/13a7d29cde8f8557b54fd6474f547a56822180ae/...</code></li><li><code>branch/06/sc-branch-1-deadbeef/...</code></li><li><code>path/src/metrics/__target__/owner/__value</code></li></ul>
 <p>For <code>path</code> targets, a reserved separator component <code>__target__</code> marks the end of the target path and the beginning of key segments. If a serialized path segment would begin with <code>__</code>, it must be escaped by prefixing it with <code>~</code>. To keep this reversible, a path segment beginning with <code>~</code> should also be escaped by prefixing it with <code>~</code>. Examples:</p>
@@ -80,12 +70,19 @@
 <h2 id="per-type-layouts">Per-type layouts</h2>
 <p>Per-type layouts are defined in:</p>
 <ul><li><a href="strings.html">Strings</a></li><li><a href="lists.html">Lists</a></li><li><a href="sets.html">Sets</a></li></ul>
-<h2 id="serialization-policy">Serialization policy</h2>
-<p>Serialization takes local current state and writes a new Git tree/commit representing the latest shareable metadata view.</p>
-<p>A later optimization may serialize only values changed since the last successful materialization or serialize by reusing unchanged subtrees.</p>
-<h2 id="why-trees-instead-of-structured-blobs">Why trees instead of structured blobs</h2>
-<p>The exchange format prefers many independently addressable paths over one large JSON blob because:</p>
-<ul><li>Git diffs trees efficiently</li><li>Git merges non-overlapping paths naturally</li><li>list entries and set members can merge as unions instead of blob conflicts</li><li>large append-only data can be chunked</li></ul>
+<h2 id="key-path-reservation">Key path reservation</h2>
+<p>Keys are serialized directly under the target base path.</p>
+<p>Any path component beginning with <code>__</code> is reserved for gmeta structural paths such as:</p>
+<ul><li><code>__value</code></li><li><code>__list</code></li><li><code>__set</code></li><li><code>__tombstones</code></li><li><code>__target__</code> (used only as the separator inside serialized <code>path</code> targets)</li></ul>
+<p>This means user keys occupy normal path segments and metadata structure begins when a reserved <code>__*</code> path component is encountered.</p>
+<h2 id="path-target-encoding">Path target encoding</h2>
+<p><code>path</code> targets are serialized using their raw path segments rather than a hash-derived fanout prefix.</p>
+<p>Shape:</p>
+<p><code>path/&lt;escaped path segments...&gt;/__target__/...</code></p>
+<p>Rules:</p>
+<ul><li>each <code>/</code>-separated path component becomes one tree path component</li><li><code>__target__</code> marks the end of the target path and the beginning of key segments</li><li>if a path segment begins with <code>__</code>, escape it by prefixing the segment with <code>~</code></li><li>if a path segment begins with <code>~</code>, also escape it by prefixing the segment with <code>~</code></li></ul>
+<p>Examples:</p>
+<ul><li><code>path:src/metrics</code> → <code>path/src/metrics/__target__/...</code></li><li><code>path:src/__generated/file.rs</code> → <code>path/src/~__generated/file.rs/__target__/...</code></li><li><code>path:src/~scratch/file.rs</code> → <code>path/src/~~scratch/file.rs/__target__/...</code></li></ul>
 <h2 id="explicit-deletion">Explicit deletion</h2>
 <p>Exchange must not assume that missing paths mean deletion.</p>
 <p>Reasons:</p>
@@ -93,10 +90,18 @@
 <p>Intentional deletion is represented by explicit tombstones.</p>
 <p>A single reserved <code>__tombstones</code> namespace is used for both whole-key and child-level deletions. Child tombstones are interpreted relative to the current key type. Serialize and materialize must ignore incompatible child tombstones for the current type rather than treating them as errors or as deletions for another collection model.</p>
 <h2 id="large-data-considerations">Large-data considerations</h2>
-<p>This format is intended to work with blobless / partial clone workflows.</p>
+<p>This format is intended to work specifically with blobless / partial clone workflows.</p>
 <p>Large metadata histories can remain practical because:</p>
 <ul><li>trees and commits are relatively small</li><li>blobs can be fetched on demand</li><li>recent or important working sets can be prioritized</li><li>pruning strategies can reduce tip tree size without losing reconstructability of older introduced metadata</li></ul>
-<p>A future pruning/checkpoint scheme may periodically shrink the visible tip tree while retaining enough history to reconstruct older metadata when needed.</p>
+<h2 id="refs">Refs</h2>
+<p>When serializing metadata, the commit/tree produced updates a local metadata ref so it can be pushed.</p>
+<p>The local serialized metadata head by default should be:</p>
+<ul><li><code>refs/meta/local</code></li></ul>
+<p>If <code>meta.namespace</code> Git config is set, that namespace should be used instead of <code>meta</code>.</p>
+<p>Fetched remote metadata heads should be stored under a remote-specific namespace, for example:</p>
+<ul><li><code>refs/meta/remotes/origin</code></li></ul>
+<p>If user has multiple local metadata destinations, the local layout would expand to directory-shaped refs such as:</p>
+<ul><li><code>refs/meta/local/public</code></li><li><code>refs/meta/local/private</code></li></ul>
         </article>
       </main>
     </div>
