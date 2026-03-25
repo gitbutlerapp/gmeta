@@ -24,6 +24,7 @@ PAGE_ORDER = [
     "exchange-format/strings.md",
     "exchange-format/lists.md",
     "exchange-format/sets.md",
+    "implementation/overview.md",
     "implementation/storage.md",
     "implementation/standard-keys.md",
     "implementation/cli.md",
@@ -44,6 +45,7 @@ PAGE_GROUPS = {
         "exchange-format/sets.md",
     ],
     "Implementation": [
+        "implementation/overview.md",
         "implementation/storage.md",
         "implementation/standard-keys.md",
         "implementation/cli.md",

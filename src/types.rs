@@ -1,6 +1,5 @@
 use anyhow::{bail, Result};
 use sha1::{Digest, Sha1};
-use sha2::Sha256;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TargetType {
@@ -215,7 +214,9 @@ pub fn decode_path_target_segments(segments: &[&str]) -> Result<String> {
 }
 
 pub fn set_member_id(value: &str) -> String {
-    let mut hasher = Sha256::new();
+    let header = format!("blob {}\0", value.len());
+    let mut hasher = Sha1::new();
+    hasher.update(header.as_bytes());
     hasher.update(value.as_bytes());
     format!("{:x}", hasher.finalize())
 }
@@ -319,10 +320,7 @@ pub fn build_set_member_tombstone_tree_path(
     member_id: &str,
 ) -> Result<String> {
     let key_path = build_key_tree_path(target, key)?;
-    Ok(format!(
-        "{}/{}/{}/{}",
-        key_path, TOMBSTONE_ROOT, member_id, TOMBSTONE_BLOB
-    ))
+    Ok(format!("{}/{}/{}", key_path, TOMBSTONE_ROOT, member_id))
 }
 
 #[cfg(test)]
@@ -428,12 +426,16 @@ mod tests {
     #[test]
     fn test_tree_base_path_path_escapes_reserved_segments() {
         let t = Target::parse("path:src/__generated/file.rs").unwrap();
-        assert_eq!(t.tree_base_path(), "path/src/~__generated/file.rs/__target__");
+        assert_eq!(
+            t.tree_base_path(),
+            "path/src/~__generated/file.rs/__target__"
+        );
     }
 
     #[test]
     fn test_decode_path_target_segments() {
-        let decoded = super::decode_path_target_segments(&["src", "~__generated", "file.rs"]).unwrap();
+        let decoded =
+            super::decode_path_target_segments(&["src", "~__generated", "file.rs"]).unwrap();
         assert_eq!(decoded, "src/__generated/file.rs");
     }
 

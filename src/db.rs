@@ -71,6 +71,7 @@ impl Db {
                 target_value TEXT NOT NULL,
                 key TEXT NOT NULL,
                 member_id TEXT NOT NULL,
+                value TEXT NOT NULL DEFAULT '',
                 timestamp INTEGER NOT NULL,
                 email TEXT NOT NULL,
                 UNIQUE(target_type, target_value, key, member_id)
@@ -111,6 +112,9 @@ impl Db {
         let _ = self.conn.execute_batch(
             "ALTER TABLE list_values ADD COLUMN is_git_ref INTEGER NOT NULL DEFAULT 0;",
         );
+        let _ = self
+            .conn
+            .execute_batch("ALTER TABLE set_tombstones ADD COLUMN value TEXT NOT NULL DEFAULT '';");
 
         Ok(())
     }
@@ -303,12 +307,16 @@ impl Db {
                             "DELETE FROM set_values WHERE metadata_id = ?1 AND member_id = ?2",
                             params![metadata_id, member_id],
                         )?;
+                        let member_value = existing_members
+                            .get(member_id)
+                            .map(|(value, _)| value.clone())
+                            .unwrap_or_default();
                         tx.execute(
-                            "INSERT INTO set_tombstones (target_type, target_value, key, member_id, timestamp, email)
-                             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                            "INSERT INTO set_tombstones (target_type, target_value, key, member_id, value, timestamp, email)
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                              ON CONFLICT(target_type, target_value, key, member_id) DO UPDATE
-                             SET timestamp = excluded.timestamp, email = excluded.email",
-                            params![target_type, target_value, key, member_id, timestamp, email],
+                             SET value = excluded.value, timestamp = excluded.timestamp, email = excluded.email",
+                            params![target_type, target_value, key, member_id, member_value, timestamp, email],
                         )?;
                     }
                 }
@@ -411,52 +419,53 @@ impl Db {
         let escaped_target = escape_like_pattern(target_value);
         let target_like = format!("{}/%", escaped_target);
 
-        let (sql, params_vec): (&str, Vec<Box<dyn rusqlite::types::ToSql>>) = match (include_target_subtree, key_prefix) {
-            (false, Some(prefix)) => (
-                "SELECT rowid, target_value, key, value, value_type, is_git_ref FROM metadata
+        let (sql, params_vec): (&str, Vec<Box<dyn rusqlite::types::ToSql>>) =
+            match (include_target_subtree, key_prefix) {
+                (false, Some(prefix)) => (
+                    "SELECT rowid, target_value, key, value, value_type, is_git_ref FROM metadata
                  WHERE target_type = ?1 AND target_value = ?2
                  AND (key = ?3 OR key LIKE ?4 ESCAPE '\\')
                  ORDER BY target_value, key",
-                vec![
-                    Box::new(target_type.to_string()),
-                    Box::new(target_value.to_string()),
-                    Box::new(prefix.to_string()),
-                    Box::new(format!("{}:%", escape_like_pattern(prefix))),
-                ],
-            ),
-            (false, None) => (
-                "SELECT rowid, target_value, key, value, value_type, is_git_ref FROM metadata
+                    vec![
+                        Box::new(target_type.to_string()),
+                        Box::new(target_value.to_string()),
+                        Box::new(prefix.to_string()),
+                        Box::new(format!("{}:%", escape_like_pattern(prefix))),
+                    ],
+                ),
+                (false, None) => (
+                    "SELECT rowid, target_value, key, value, value_type, is_git_ref FROM metadata
                  WHERE target_type = ?1 AND target_value = ?2
                  ORDER BY target_value, key",
-                vec![
-                    Box::new(target_type.to_string()),
-                    Box::new(target_value.to_string()),
-                ],
-            ),
-            (true, Some(prefix)) => (
-                "SELECT rowid, target_value, key, value, value_type, is_git_ref FROM metadata
+                    vec![
+                        Box::new(target_type.to_string()),
+                        Box::new(target_value.to_string()),
+                    ],
+                ),
+                (true, Some(prefix)) => (
+                    "SELECT rowid, target_value, key, value, value_type, is_git_ref FROM metadata
                  WHERE target_type = ?1 AND (target_value = ?2 OR target_value LIKE ?3 ESCAPE '\\')
                  AND (key = ?4 OR key LIKE ?5 ESCAPE '\\')
                  ORDER BY target_value, key",
-                vec![
-                    Box::new(target_type.to_string()),
-                    Box::new(target_value.to_string()),
-                    Box::new(target_like),
-                    Box::new(prefix.to_string()),
-                    Box::new(format!("{}:%", escape_like_pattern(prefix))),
-                ],
-            ),
-            (true, None) => (
-                "SELECT rowid, target_value, key, value, value_type, is_git_ref FROM metadata
+                    vec![
+                        Box::new(target_type.to_string()),
+                        Box::new(target_value.to_string()),
+                        Box::new(target_like),
+                        Box::new(prefix.to_string()),
+                        Box::new(format!("{}:%", escape_like_pattern(prefix))),
+                    ],
+                ),
+                (true, None) => (
+                    "SELECT rowid, target_value, key, value, value_type, is_git_ref FROM metadata
                  WHERE target_type = ?1 AND (target_value = ?2 OR target_value LIKE ?3 ESCAPE '\\')
                  ORDER BY target_value, key",
-                vec![
-                    Box::new(target_type.to_string()),
-                    Box::new(target_value.to_string()),
-                    Box::new(target_like),
-                ],
-            ),
-        };
+                    vec![
+                        Box::new(target_type.to_string()),
+                        Box::new(target_value.to_string()),
+                        Box::new(target_like),
+                    ],
+                ),
+            };
 
         let mut stmt = self.conn.prepare(sql)?;
         let params_refs: Vec<&dyn rusqlite::types::ToSql> =
@@ -826,11 +835,11 @@ impl Db {
                 )?;
 
                 tx.execute(
-                    "INSERT INTO set_tombstones (target_type, target_value, key, member_id, timestamp, email)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                    "INSERT INTO set_tombstones (target_type, target_value, key, member_id, value, timestamp, email)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                      ON CONFLICT(target_type, target_value, key, member_id) DO UPDATE
-                     SET timestamp = excluded.timestamp, email = excluded.email",
-                    params![target_type, target_value, key, member_id, timestamp, email],
+                     SET value = excluded.value, timestamp = excluded.timestamp, email = excluded.email",
+                    params![target_type, target_value, key, member_id, value, timestamp, email],
                 )?;
 
                 let new_value = encode_set_values_by_metadata_id(&tx, metadata_id)?;
@@ -1094,12 +1103,12 @@ impl Db {
     }
 
     /// Get all set member tombstones for serialization.
-    /// Returns (target_type, target_value, key, member_id, timestamp, email).
+    /// Returns (target_type, target_value, key, member_id, value, timestamp, email).
     pub fn get_all_set_tombstones(
         &self,
-    ) -> Result<Vec<(String, String, String, String, i64, String)>> {
+    ) -> Result<Vec<(String, String, String, String, String, i64, String)>> {
         let mut stmt = self.conn.prepare(
-            "SELECT target_type, target_value, key, member_id, timestamp, email
+            "SELECT target_type, target_value, key, member_id, value, timestamp, email
              FROM set_tombstones
              ORDER BY target_type, target_value, key, member_id",
         )?;
@@ -1110,8 +1119,9 @@ impl Db {
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, String>(3)?,
-                row.get::<_, i64>(4)?,
-                row.get::<_, String>(5)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, String>(6)?,
             ))
         })?;
 

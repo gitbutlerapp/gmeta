@@ -133,7 +133,7 @@ fn build_tree(
     repo: &git2::Repository,
     metadata_entries: &[(String, String, String, String, String, i64, bool)],
     tombstone_entries: &[(String, String, String, i64, String)],
-    set_tombstone_entries: &[(String, String, String, String, i64, String)],
+    set_tombstone_entries: &[(String, String, String, String, String, i64, String)],
 ) -> Result<git2::Oid> {
     // Collect all file paths -> blob content
     let mut files: BTreeMap<String, Vec<u8>> = BTreeMap::new();
@@ -186,7 +186,7 @@ fn build_tree(
                 let set_dir_path = build_set_tree_dir_path(&target, key)?;
                 for member in members {
                     let member_id = crate::types::set_member_id(&member);
-                    let full_path = format!("{}/{}/__value", set_dir_path, member_id);
+                    let full_path = format!("{}/{}", set_dir_path, member_id);
                     files.insert(full_path, member.into_bytes());
                 }
             }
@@ -209,7 +209,9 @@ fn build_tree(
         files.insert(full_path, payload);
     }
 
-    for (target_type, target_value, key, member_id, timestamp, email) in set_tombstone_entries {
+    for (target_type, target_value, key, member_id, value, _timestamp, _email) in
+        set_tombstone_entries
+    {
         let target = if target_type == "project" {
             Target::parse("project")?
         } else {
@@ -217,11 +219,7 @@ fn build_tree(
         };
 
         let full_path = build_set_member_tombstone_tree_path(&target, key, member_id)?;
-        let payload = serde_json::to_vec(&TombstoneBlob {
-            timestamp: *timestamp,
-            email,
-        })?;
-        files.insert(full_path, payload);
+        files.insert(full_path, value.as_bytes().to_vec());
     }
 
     // Build nested tree from flat paths

@@ -564,7 +564,9 @@ fn test_path_target() {
         .args(["get", "path:src/main.rs"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("src/main.rs;review:status approved"));
+        .stdout(predicate::str::contains(
+            "src/main.rs;review:status approved",
+        ));
 }
 
 #[test]
@@ -976,10 +978,17 @@ fn test_set_type_round_trips_and_serializes_members() {
         if full_path.starts_with(&format!(
             "branch/{}/sc-branch-1-deadbeef/reviewer/__set/",
             fanout
-        )) && full_path.ends_with("/__value")
-            && entry.kind() == Some(git2::ObjectType::Blob)
+        )) && entry.kind() == Some(git2::ObjectType::Blob)
         {
-            set_members.push(full_path);
+            let tail = full_path
+                .strip_prefix(&format!(
+                    "branch/{}/sc-branch-1-deadbeef/reviewer/__set/",
+                    fanout
+                ))
+                .unwrap();
+            if !tail.contains('/') {
+                set_members.push(full_path);
+            }
         }
         git2::TreeWalkResult::Ok
     })
@@ -1617,7 +1626,7 @@ fn test_materialize_no_common_ancestor_uses_two_way_merge_remote_wins() {
             "strategy=two-way-no-common-ancestor",
         ))
         .stdout(predicate::str::contains(
-            "reason=no-common-ancestor-remote-wins",
+            "reason=no-common-ancestor-local-wins",
         ))
         .stdout(predicate::str::contains("agent:model"));
 
@@ -1630,20 +1639,20 @@ fn test_materialize_no_common_ancestor_uses_two_way_merge_remote_wins() {
         .id();
     assert_eq!(a_after_dry_run, a_oid);
 
-    // Real materialize applies two-way merge where remote wins conflicts.
+    // Real materialize applies two-way merge where local wins conflicts.
     gmeta(repo_a_dir.path())
         .args(["materialize"])
         .assert()
         .success()
         .stdout(predicate::str::contains("two-way merge"));
 
-    // Conflict key should come from remote.
+    // Conflict key should come from local.
     gmeta(repo_a_dir.path())
         .args(["get", "project", "agent:model"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("remote"))
-        .stdout(predicate::str::contains("local").not());
+        .stdout(predicate::str::contains("local"))
+        .stdout(predicate::str::contains("remote").not());
 
     // Non-conflicting keys from both sides should be preserved.
     gmeta(repo_a_dir.path())

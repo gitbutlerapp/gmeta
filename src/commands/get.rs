@@ -125,7 +125,11 @@ fn print_json(
         };
 
         if target.target_type == TargetType::Path {
-            insert_nested(&mut root, &[entry_target_value.as_str(), key.as_str()], leaf_value);
+            insert_nested(
+                &mut root,
+                &[entry_target_value.as_str(), key.as_str()],
+                leaf_value,
+            );
         } else {
             let parts: Vec<&str> = key.split(':').collect();
             insert_nested(&mut root, &parts, leaf_value);

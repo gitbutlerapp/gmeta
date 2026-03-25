@@ -32,7 +32,7 @@ struct TombstoneEntry {
 struct ParsedTree {
     values: BTreeMap<Key, TreeValue>,
     tombstones: BTreeMap<Key, TombstoneEntry>,
-    set_tombstones: BTreeMap<(Key, String), TombstoneEntry>,
+    set_tombstones: BTreeMap<(Key, String), String>,
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -47,7 +47,7 @@ enum ConflictReason {
     ConcurrentAdd,
     LocalModifiedRemoteRemoved,
     RemoteModifiedLocalRemoved,
-    NoCommonAncestorRemoteWins,
+    NoCommonAncestorLocalWins,
 }
 
 impl ConflictReason {
@@ -57,7 +57,7 @@ impl ConflictReason {
             ConflictReason::ConcurrentAdd => "concurrent-add",
             ConflictReason::LocalModifiedRemoteRemoved => "local-modified-remote-removed",
             ConflictReason::RemoteModifiedLocalRemoved => "remote-modified-local-removed",
-            ConflictReason::NoCommonAncestorRemoteWins => "no-common-ancestor-remote-wins",
+            ConflictReason::NoCommonAncestorLocalWins => "no-common-ancestor-local-wins",
         }
     }
 }
@@ -325,7 +325,7 @@ pub fn run(remote: Option<&str>, dry_run: bool) -> Result<()> {
 
             if merge_strategy == "two-way-no-common-ancestor" {
                 println!(
-                    "no common ancestor between local metadata ref and {}; using two-way merge (remote wins key conflicts)",
+                    "no common ancestor between local metadata ref and {}; using two-way merge (local wins key conflicts)",
                     ref_name
                 );
             }
@@ -388,7 +388,7 @@ fn update_db_from_tree(
     db: &Db,
     values: &BTreeMap<Key, TreeValue>,
     tombstones: &BTreeMap<Key, TombstoneEntry>,
-    set_tombstones: &BTreeMap<(Key, String), TombstoneEntry>,
+    set_tombstones: &BTreeMap<(Key, String), String>,
     email: &str,
     now: i64,
 ) -> Result<()> {
@@ -507,7 +507,7 @@ fn collect_db_changes_from_tree(
     db: &Db,
     values: &BTreeMap<Key, TreeValue>,
     tombstones: &BTreeMap<Key, TombstoneEntry>,
-    set_tombstones: &BTreeMap<(Key, String), TombstoneEntry>,
+    set_tombstones: &BTreeMap<(Key, String), String>,
     planned_removals: &mut BTreeSet<Key>,
 ) -> Result<Vec<PlannedDbChange>> {
     let mut planned = Vec::new();
@@ -691,7 +691,7 @@ fn format_key_for_display(key: &Key) -> String {
 /// - In base, changed only on remote: take remote
 /// - In base, changed on both sides (true conflict):
 ///   - Lists: union of entries
-///   - Strings: later commit timestamp wins
+///   - Strings: local/ours wins
 /// - Not in base, only in local: take local (new local key)
 /// - Not in base, only in remote: take remote (new remote key)
 /// - Not in base, in both: same conflict rules as above
@@ -816,7 +816,7 @@ fn three_way_merge(
 }
 
 /// Two-way merge used when local and remote metadata refs have no common ancestor.
-/// Remote state wins for any overlapping key conflict.
+/// Local/our state wins for any overlapping key conflict.
 fn two_way_merge_no_common_ancestor(
     local_values: &BTreeMap<Key, TreeValue>,
     local_tombstones: &BTreeMap<Key, TombstoneEntry>,
@@ -864,15 +864,15 @@ fn two_way_merge_no_common_ancestor(
         {
             conflicts.push(ConflictDecision {
                 key: key.clone(),
-                reason: ConflictReason::NoCommonAncestorRemoteWins,
-                resolution: ConflictResolution::Remote,
+                reason: ConflictReason::NoCommonAncestorLocalWins,
+                resolution: ConflictResolution::Local,
             });
         }
 
-        let selected = if remote_state != MergeState::Absent {
-            remote_state
-        } else {
+        let selected = if local_state != MergeState::Absent {
             local_state
+        } else {
+            remote_state
         };
 
         match selected {
@@ -915,7 +915,7 @@ fn merge_tombstones(
                     (false, false) => Some(b.clone()),
                     (true, false) => Some(l.clone()),
                     (false, true) => Some(r.clone()),
-                    (true, true) => Some(select_newer_tombstone(l, r)),
+                    (true, true) => Some(select_preferred_tombstone(l, r)),
                 }
             }
             (Some(b), Some(l), None) => {
@@ -935,7 +935,7 @@ fn merge_tombstones(
             (Some(_), None, None) => None,
             (None, Some(l), None) => Some(l.clone()),
             (None, None, Some(r)) => Some(r.clone()),
-            (None, Some(l), Some(r)) => Some(select_newer_tombstone(l, r)),
+            (None, Some(l), Some(r)) => Some(select_preferred_tombstone(l, r)),
             (None, None, None) => None,
         };
 
@@ -949,27 +949,18 @@ fn merge_tombstones(
     merged
 }
 
-fn select_newer_tombstone(local: &TombstoneEntry, remote: &TombstoneEntry) -> TombstoneEntry {
-    if remote.timestamp > local.timestamp {
-        remote.clone()
-    } else {
-        local.clone()
-    }
+fn select_preferred_tombstone(local: &TombstoneEntry, _remote: &TombstoneEntry) -> TombstoneEntry {
+    local.clone()
 }
 
 fn merge_set_member_tombstones(
-    local: &BTreeMap<(Key, String), TombstoneEntry>,
-    remote: &BTreeMap<(Key, String), TombstoneEntry>,
+    local: &BTreeMap<(Key, String), String>,
+    remote: &BTreeMap<(Key, String), String>,
     merged_values: &BTreeMap<Key, TreeValue>,
-) -> BTreeMap<(Key, String), TombstoneEntry> {
-    let mut merged = local.clone();
-    for (key, tombstone) in remote {
-        match merged.get(key) {
-            Some(existing) if existing.timestamp >= tombstone.timestamp => {}
-            _ => {
-                merged.insert(key.clone(), tombstone.clone());
-            }
-        }
+) -> BTreeMap<(Key, String), String> {
+    let mut merged = remote.clone();
+    for (key, value) in local {
+        merged.insert(key.clone(), value.clone());
     }
 
     merged.retain(|(key, member_id), _| match merged_values.get(key) {
@@ -980,12 +971,12 @@ fn merge_set_member_tombstones(
 }
 
 /// Resolve a conflict where both sides changed the same key.
-/// For strings, the later commit timestamp wins.
+/// Lists union; all other direct conflicts prefer the local/ours side.
 fn resolve_conflict(
     local: &TreeValue,
     remote: &TreeValue,
-    local_timestamp: i64,
-    remote_timestamp: i64,
+    _local_timestamp: i64,
+    _remote_timestamp: i64,
 ) -> (TreeValue, ConflictResolution) {
     match (local, remote) {
         // Both lists: union of entries
@@ -1004,30 +995,18 @@ fn resolve_conflict(
                 ConflictResolution::Union,
             )
         }
-        // Both sets: union of members, remote wins for identical member ids.
+        // Both sets: union of members, local/ours wins for identical member ids.
         (TreeValue::Set(local_set), TreeValue::Set(remote_set)) => {
-            let mut combined = local_set.clone();
-            for (member_id, content) in remote_set {
+            let mut combined = remote_set.clone();
+            for (member_id, content) in local_set {
                 combined.insert(member_id.clone(), content.clone());
             }
             (TreeValue::Set(combined), ConflictResolution::Union)
         }
-        // Both strings: later commit timestamp wins (tie goes to local)
-        (TreeValue::String(_), TreeValue::String(_)) => {
-            if remote_timestamp > local_timestamp {
-                (remote.clone(), ConflictResolution::Remote)
-            } else {
-                (local.clone(), ConflictResolution::Local)
-            }
-        }
-        // Mismatched types: later timestamp wins
-        _ => {
-            if remote_timestamp > local_timestamp {
-                (remote.clone(), ConflictResolution::Remote)
-            } else {
-                (local.clone(), ConflictResolution::Local)
-            }
-        }
+        // Both strings: local/ours wins.
+        (TreeValue::String(_), TreeValue::String(_)) => (local.clone(), ConflictResolution::Local),
+        // Mismatched types: local/ours wins.
+        _ => (local.clone(), ConflictResolution::Local),
     }
 }
 
@@ -1036,7 +1015,7 @@ fn build_merged_tree(
     repo: &git2::Repository,
     values: &BTreeMap<Key, TreeValue>,
     tombstones: &BTreeMap<Key, TombstoneEntry>,
-    set_tombstones: &BTreeMap<(Key, String), TombstoneEntry>,
+    set_tombstones: &BTreeMap<(Key, String), String>,
 ) -> Result<git2::Oid> {
     let mut files: BTreeMap<String, Vec<u8>> = BTreeMap::new();
 
@@ -1062,7 +1041,7 @@ fn build_merged_tree(
             TreeValue::Set(set_members) => {
                 let set_dir_path = build_set_tree_dir_path(&target, key)?;
                 for (member_id, content) in set_members {
-                    let full_path = format!("{}/{}/__value", set_dir_path, member_id);
+                    let full_path = format!("{}/{}", set_dir_path, member_id);
                     files.insert(full_path, content.as_bytes().to_vec());
                 }
             }
@@ -1083,18 +1062,14 @@ fn build_merged_tree(
         files.insert(full_path, payload);
     }
 
-    for (((target_type, target_value, key), member_id), tombstone) in set_tombstones {
+    for (((target_type, target_value, key), member_id), tombstone_value) in set_tombstones {
         let target = if target_type == "project" {
             Target::parse("project")?
         } else {
             Target::parse(&format!("{}:{}", target_type, target_value))?
         };
         let full_path = build_set_member_tombstone_tree_path(&target, key, member_id)?;
-        let payload = serde_json::to_vec(&TombstoneBlob {
-            timestamp: tombstone.timestamp,
-            email: tombstone.email.clone(),
-        })?;
-        files.insert(full_path, payload);
+        files.insert(full_path, tombstone_value.as_bytes().to_vec());
     }
 
     build_tree_from_paths(repo, &files)
@@ -1178,43 +1153,29 @@ fn parse_tree(repo: &git2::Repository, tree: &git2::Tree, prefix: &str) -> Resul
         }
 
         // Set member tombstone shape:
-        //   .../<key segments...>/__tombstones/<member-id>/__deleted
-        if key_parts.len() >= 4
-            && key_parts[key_parts.len() - 3] == TOMBSTONE_ROOT
-            && key_parts[key_parts.len() - 1] == TOMBSTONE_BLOB
-        {
-            let key_segments = &key_parts[..key_parts.len() - 3];
+        //   .../<key segments...>/__tombstones/<member-id>
+        if key_parts.len() >= 3 && key_parts[key_parts.len() - 2] == TOMBSTONE_ROOT {
+            let key_segments = &key_parts[..key_parts.len() - 2];
             let key = match decode_key_path_segments(key_segments) {
                 Ok(k) => k,
                 Err(_) => continue,
             };
-            let member_id = key_parts[key_parts.len() - 2].to_string();
-            let tombstone = match parse_tombstone_blob(content) {
-                Some(t) => t,
-                None => continue,
-            };
+            let member_id = key_parts[key_parts.len() - 1].to_string();
+            let content_str = String::from_utf8_lossy(content).to_string();
             let entry_key = ((target_type, target_value, key), member_id);
-            match parsed.set_tombstones.get(&entry_key) {
-                Some(existing) if existing.timestamp >= tombstone.timestamp => {}
-                _ => {
-                    parsed.set_tombstones.insert(entry_key, tombstone);
-                }
-            }
+            parsed.set_tombstones.insert(entry_key, content_str);
             continue;
         }
 
         // Set value shape:
-        //   .../<key segments...>/__set/<member-id>/__value
-        if key_parts.len() >= 4
-            && key_parts[key_parts.len() - 3] == SET_VALUE_DIR
-            && key_parts[key_parts.len() - 1] == STRING_VALUE_BLOB
-        {
-            let key_segments = &key_parts[..key_parts.len() - 3];
+        //   .../<key segments...>/__set/<member-id>
+        if key_parts.len() >= 2 && key_parts[key_parts.len() - 2] == SET_VALUE_DIR {
+            let key_segments = &key_parts[..key_parts.len() - 2];
             let key = match decode_key_path_segments(key_segments) {
                 Ok(k) => k,
                 Err(_) => continue,
             };
-            let member_id = key_parts[key_parts.len() - 2].to_string();
+            let member_id = key_parts[key_parts.len() - 1].to_string();
             let content_str = String::from_utf8_lossy(content).to_string();
             let entry = parsed
                 .values
@@ -1424,7 +1385,15 @@ mod tests {
 
     #[test]
     fn test_parse_path_parts_for_path_target() {
-        let parts = ["path", "src", "~__generated", "file.rs", "__target__", "owner", "__value"];
+        let parts = [
+            "path",
+            "src",
+            "~__generated",
+            "file.rs",
+            "__target__",
+            "owner",
+            "__value",
+        ];
         let (target_type, target_value, key_parts) = parse_path_parts(&parts).unwrap();
         assert_eq!(target_type, "path");
         assert_eq!(target_value, "src/__generated/file.rs");
@@ -1444,11 +1413,11 @@ mod tests {
 
         assert_eq!(
             merged.get(&key("agent:model")),
-            Some(&string_value("remote"))
+            Some(&string_value("local"))
         );
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].reason, ConflictReason::ConcurrentAdd);
-        assert_eq!(conflicts[0].resolution, ConflictResolution::Remote);
+        assert_eq!(conflicts[0].resolution, ConflictResolution::Local);
     }
 
     #[test]
@@ -1498,7 +1467,7 @@ mod tests {
     }
 
     #[test]
-    fn test_two_way_merge_no_common_ancestor_remote_wins_value_conflict() {
+    fn test_two_way_merge_no_common_ancestor_local_wins_value_conflict() {
         let mut local_values = BTreeMap::new();
         local_values.insert(key("agent:model"), string_value("local"));
         local_values.insert(key("local:only"), string_value("keep-local"));
@@ -1517,7 +1486,7 @@ mod tests {
         assert!(merged_tombstones.is_empty());
         assert_eq!(
             merged_values.get(&key("agent:model")),
-            Some(&string_value("remote"))
+            Some(&string_value("local"))
         );
         assert_eq!(
             merged_values.get(&key("local:only")),
@@ -1530,8 +1499,8 @@ mod tests {
         assert_eq!(conflicts.len(), 1);
         assert_eq!(
             conflicts[0].reason,
-            ConflictReason::NoCommonAncestorRemoteWins
+            ConflictReason::NoCommonAncestorLocalWins
         );
-        assert_eq!(conflicts[0].resolution, ConflictResolution::Remote);
+        assert_eq!(conflicts[0].resolution, ConflictResolution::Local);
     }
 }

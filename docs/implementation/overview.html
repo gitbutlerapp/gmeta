@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Output and query semantics · gmeta</title>
+    <title>Implementation Overview · gmeta</title>
     <meta name="description" content="gmeta project documentation generated from the canonical spec markdown files.">
     <link rel="stylesheet" href="../assets/style.css">
     <script>
@@ -20,7 +20,7 @@
           <a class="brand" href="../index.html">gmeta</a>
           <p class="tagline">Git metadata specification and project docs</p>
           <nav class="nav">
-            <div class="nav-group"><a href="../index.html">Overview</a></div><div class="nav-group"><h2>Exchange format</h2><a href="../exchange-format/targets.html">Targets and keys</a><a href="../exchange-format/exchange.html">Serialization</a><a href="../exchange-format/materialization.html">Materialization</a></div><div class="nav-group"><h2>Value types</h2><a href="../exchange-format/strings.html">Strings</a><a href="../exchange-format/lists.html">Lists</a><a href="../exchange-format/sets.html">Sets</a></div><div class="nav-group"><h2>Implementation</h2><a href="overview.html">Implementation Overview</a><a href="storage.html">Local storage</a><a href="standard-keys.html">Standard keys</a><a href="cli.html">CLI surface</a><a class="active" href="output.html">Output and query semantics</a><a href="workflow.html">Workflow</a></div>
+            <div class="nav-group"><a href="../index.html">Overview</a></div><div class="nav-group"><h2>Exchange format</h2><a href="../exchange-format/targets.html">Targets and keys</a><a href="../exchange-format/exchange.html">Serialization</a><a href="../exchange-format/materialization.html">Materialization</a></div><div class="nav-group"><h2>Value types</h2><a href="../exchange-format/strings.html">Strings</a><a href="../exchange-format/lists.html">Lists</a><a href="../exchange-format/sets.html">Sets</a></div><div class="nav-group"><h2>Implementation</h2><a class="active" href="overview.html">Implementation Overview</a><a href="storage.html">Local storage</a><a href="standard-keys.html">Standard keys</a><a href="cli.html">CLI surface</a><a href="output.html">Output and query semantics</a><a href="workflow.html">Workflow</a></div>
           </nav>
         </div>
         <div class="sidebar-footer">
@@ -41,58 +41,11 @@
         <header class="page-header">
           <div class="page-header-main">
             <div class="eyebrow">Generated from <a href="https://github.com/schacon/gmeta/tree/main/spec"><code>spec/*.md</code></a></div>
-            <h1>Output and query semantics</h1>
+            <h1>Implementation Overview</h1>
           </div>
         </header>
         <article class="doc-content">
-          <p>This document describes implementation-level query behavior and display choices.</p>
-<p>The exchange format defines what data means on the wire; this document defines how a specific implementation may expose that data through commands like <code>gmeta get</code>.</p>
-<h2 id="query-forms">Query forms</h2>
-<p><code>gmeta get</code> should support three basic forms:</p>
-<pre><code>gmeta get &lt;target&gt;
-gmeta get &lt;target&gt; &lt;key&gt;
-gmeta get &lt;target&gt; &lt;partial-key&gt;</code></pre>
-<p>Behavior:</p>
-<ul><li>with only a target, return all visible keys for that target</li><li>with an exact key, return that key if present</li><li>with a partial key, return matching keys in that namespace subtree</li></ul>
-<h2 id="human-readable-output">Human-readable output</h2>
-<p>Example:</p>
-<pre><code>❯ gmeta get commit:13a7d29cde8f8557b54fd6474f547a56822180ae
-agent:model  claude-4.6
-agent:provider  anthropic</code></pre>
-<p>Human-readable output should be stable and easy to scan, but exact formatting is an implementation detail.</p>
-<h2 id="json-output">JSON output</h2>
-<p><code>--json</code> should return a structured object representation.</p>
-<p>Example:</p>
-<pre><code>❯ gmeta get --json commit:13a7d29cde8f8557b54fd6474f547a56822180ae
-{
-  &quot;agent&quot;: {
-    &quot;model&quot;: &quot;claude-4.6&quot;,
-    &quot;provider&quot;: &quot;anthropic&quot;
-  }
-}</code></pre>
-<h2 id="json-with-authorship">JSON with authorship</h2>
-<p><code>--with-authorship</code> augments JSON values with provenance metadata for the last visible mutation.</p>
-<p>Example:</p>
-<pre><code>❯ gmeta get --json --with-authorship commit:13a7d29cde8f8557b54fd6474f547a56822180ae
-{
-  &quot;agent&quot;: {
-    &quot;model&quot;: {
-      &quot;value&quot;: &quot;claude-4.6&quot;,
-      &quot;author&quot;: &quot;schacon@gmail.com&quot;,
-      &quot;timestamp&quot;: 1771232450000
-    },
-    &quot;provider&quot;: {
-      &quot;value&quot;: &quot;anthropic&quot;,
-      &quot;author&quot;: &quot;schacon@gmail.com&quot;,
-      &quot;timestamp&quot;: 1771232450000
-    }
-  }
-}</code></pre>
-<h2 id="collection-output">Collection output</h2>
-<p>Type-specific JSON output should be unsurprising:</p>
-<ul><li>strings render as strings, or as <code>{ value, author, timestamp }</code> with authorship</li><li>lists render as arrays in visible list order</li><li>sets render as arrays in deterministic display order</li></ul>
-<p>The exact JSON envelope may evolve, but two rules should hold:</p>
-<ol><li>output should preserve enough structure to distinguish namespaces</li><li>collection ordering in output should be deterministic</li></ol>
+          <p>Overview</p>
         </article>
       </main>
     </div>
