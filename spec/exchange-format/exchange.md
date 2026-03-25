@@ -1,15 +1,6 @@
-# Exchange format and refs
+# Serialization
 
-This document describes how to serialize metadata into Git primatives and where that data is to be stored.
-
-## Goals
-
-The exchange format should:
-
-- work over existing Git transport (use git tree and commit structures)
-- diff efficiently
-- merge structurally where possible
-- reconstruct current shareable state during materialization
+This document describes how to serialize metadata into Git primatives that can be transferred via normal Git remote protocols.
 
 ## Commit model
 
@@ -119,33 +110,3 @@ Reasons:
 Intentional deletion is represented by explicit tombstones.
 
 A single reserved `__tombstones` namespace is used for both whole-key and child-level deletions. Child tombstones are interpreted relative to the current key type. Serialize and materialize must ignore incompatible child tombstones for the current type rather than treating them as errors or as deletions for another collection model.
-
-## Large-data considerations
-
-This format is intended to work specifically with blobless / partial clone workflows.
-
-Large metadata histories can remain practical because:
-
-- trees and commits are relatively small
-- blobs can be fetched on demand
-- recent or important working sets can be prioritized
-- pruning strategies can reduce tip tree size without losing reconstructability of older introduced metadata
-
-## Refs
-
-When serializing metadata, the commit/tree produced updates a local metadata ref so it can be pushed.
-
-The local serialized metadata head by default should be:
-
-- `refs/meta/local`
-
-If `meta.namespace` Git config is set, that namespace should be used instead of `meta`.
-
-Fetched remote metadata heads should be stored under a remote-specific namespace, for example:
-
-- `refs/meta/remotes/origin`
-
-If user has multiple local metadata destinations, the local layout would expand to directory-shaped refs such as:
-
-- `refs/meta/local/public`
-- `refs/meta/local/private`

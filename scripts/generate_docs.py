@@ -18,7 +18,6 @@ ASSETS_DIR = DOCS_DIR / "assets"
 
 PAGE_ORDER = [
     "README.md",
-    "exchange-format/principles.md",
     "exchange-format/targets.md",
     "exchange-format/exchange.md",
     "exchange-format/materialization.md",
@@ -40,7 +39,6 @@ PAGE_GROUPS = {
         "exchange-format/materialization.md",
     ],
     "Value types": [
-        "exchange-format/principles.md",
         "exchange-format/strings.md",
         "exchange-format/lists.md",
         "exchange-format/sets.md",

@@ -20,7 +20,7 @@
           <a class="brand" href="../index.html">gmeta</a>
           <p class="tagline">Git metadata specification and project docs</p>
           <nav class="nav">
-            <div class="nav-group"><a href="../index.html">Overview</a></div><div class="nav-group"><h2>Exchange format</h2><a href="../exchange-format/targets.html">Targets and keys</a><a href="../exchange-format/exchange.html">Exchange format and refs</a><a href="../exchange-format/materialization.html">Materialization and merge workflow</a></div><div class="nav-group"><h2>Value types</h2><a href="../exchange-format/principles.html">Shared principles</a><a href="../exchange-format/strings.html">Strings</a><a href="../exchange-format/lists.html">Lists</a><a href="../exchange-format/sets.html">Sets</a></div><div class="nav-group"><h2>Implementation</h2><a class="active" href="storage.html">Local storage</a><a href="standard-keys.html">Standard keys</a><a href="cli.html">CLI surface</a><a href="output.html">Output and query semantics</a><a href="workflow.html">Workflow</a></div>
+            <div class="nav-group"><a href="../index.html">Overview</a></div><div class="nav-group"><h2>Exchange format</h2><a href="../exchange-format/targets.html">Targets and keys</a><a href="../exchange-format/exchange.html">Serialization</a><a href="../exchange-format/materialization.html">Materialization</a></div><div class="nav-group"><h2>Value types</h2><a href="../exchange-format/strings.html">Strings</a><a href="../exchange-format/lists.html">Lists</a><a href="../exchange-format/sets.html">Sets</a></div><div class="nav-group"><h2>Implementation</h2><a class="active" href="storage.html">Local storage</a><a href="standard-keys.html">Standard keys</a><a href="cli.html">CLI surface</a><a href="output.html">Output and query semantics</a><a href="workflow.html">Workflow</a></div>
           </nav>
         </div>
         <div class="sidebar-footer">
@@ -71,6 +71,15 @@
 <p>Local storage should also record enough state to support incremental materialization and serialization, including:</p>
 <ul><li>the last metadata commit successfully materialized per source ref</li><li>which local values changed since last materialization / serialization</li><li>any tombstones that still need to be emitted on serialize</li></ul>
 <p>These are local optimization and correctness concerns and need not be fully represented in the exchange tree.</p>
+<h2 id="refs">Refs</h2>
+<p>When serializing metadata, the commit/tree produced updates a local metadata ref so it can be pushed.</p>
+<p>The local serialized metadata head by default should be:</p>
+<ul><li><code>refs/meta/local</code></li></ul>
+<p>If <code>meta.namespace</code> Git config is set, that namespace should be used instead of <code>meta</code>.</p>
+<p>Fetched remote metadata heads should be stored under a remote-specific namespace, for example:</p>
+<ul><li><code>refs/meta/remotes/origin</code></li></ul>
+<p>If user has multiple local metadata destinations, the local layout would expand to directory-shaped refs such as:</p>
+<ul><li><code>refs/meta/local/public</code></li><li><code>refs/meta/local/private</code></li></ul>
         </article>
       </main>
     </div>

@@ -209,9 +209,8 @@ Serializing the data takes the targets, keys and values from SQLite and put them
 So, for example, setting `agent:model` to 'claude' on commit `13a7d29` would serialize roughly to this:
 
 ```
-
 ❯ git ls-tree -r refs/meta/local
-100644 blob a76e08d661b081b4e618e7e61066c879056c8f18 commit/13/a7d29cde8f8557b54fd6474f547a56822180ae/agent/model/\_\_value
+100644 blob a76e08d661b081b4e618e7e61066c879056c8f18 commit/13/a7d29cde8f8557b54fd6474f547a56822180ae/agent/model/__value
 
 ❯ git cat-file -p a76e08d66
 claude
@@ -291,7 +290,7 @@ As we'll see later, we will not assume that missing data means it should be dele
 
 One of the main driving points of this problem set is keeping prompts and transcripts for agentic work. As many solutions have already started finding out, this data adds up fast.
 
-I've already seen projects trying to keep agentic transcript metadata where in less than 3 months, a codebase of 400 files and 2k commits with an entire Git code history clone of 14Mb has already accrued over 2.5Gb of transcripts data. A clone with the metadata expands from a 5Mb packfile without, to a 500Mb packfile with.
+I've already seen projects trying to keep agentic transcript metadata where in less than 3 months, a codebase of 400 files and 2k commits with an entire Git code history clone of 14Mb has already accrued over 2.5Gb of transcripts data. A clone of this project expands from a 5Mb packfile without metadata, to a 500Mb packfile with metadata.
 
 So, how do we deal with the problem of large amounts of metadata in Git?
 
@@ -311,7 +310,7 @@ However, if the problem is the blobs, how do we get the blobs we probably need s
 
 There are a few different ways we could practically do this:
 
-- Save the full tree of every value in the latest commit _and_ a list of blobs we think we may need in same said metadata to initially fetch from as a first working set.
+- Save the full tree of every value in the latest commit _and_ a list of blobs we think we may need in same said metadata to initially fetch from as a first working set (or have some other heuristic for checking out a partial working set).
 - Occasionally prune the tree itself to only be the first working set based on project settings and then do a full history walk to recreate a list of all the keys we've ever seen.
 
 Our proposed solution is the second - to occasionally prune the tree that the head commit tree contains to a subset of data that is likely to be needed shortly. These "prune" commits will have a special commit message trailer that informs the system that there was a pruning action so if we're trying to calcuate the existance of older values, we can skip it.
@@ -324,9 +323,9 @@ However, what if we want a value for some older target/key? Maybe we're doing a 
 
 It is really pretty simple with this scheme to construct a list of every `target, key, value-blob` tuple in even quite extensive histories. We can simply walk the commit history and do a diff of every non-prune commit to construct a list of all the tree entries we've seen introduced or modified at any point.
 
-As a benchmark, I created a test history of metadata in a gmeta format that was 10k commits long, containing metadata for nearly 550k commits. The tip only contained data for around 4k commits and it was pruned 120 times in it's history.
+As a benchmark, I created a test history of metadata in a gmeta format that was 10k metadata commits long, containing metadata for nearly 550k unique commit targets. The tip only contained data for around 4k commit targets and the history was pruned 120 times in it's history.
 
-I was able to reconstruct the entire list of 550k commit shas that contained metadata in about 15 seconds.
+I was able to reconstruct the entire list of 550k commit target shas and metadata keys in about 15 seconds.
 
 ```
 generating 10000 commits…
@@ -401,7 +400,6 @@ When there are multiple metadata remotes, the local heads would be kept under re
 With multiple remotes, the meta refs structure might look like this:
 
 ```
-
 ❯ tree .git/refs/meta
 .git/meta
 ├── local
@@ -410,5 +408,24 @@ With multiple remotes, the meta refs structure might look like this:
 └─── remotes
    ├── public
    └── private
-
 ```
+
+## Implementation
+
+I'm including a working Rust reference implementation with the CLI surface that was in the examples. You can compile this project with `cargo build` and test it out on any Git repository.
+
+This is considered the plumbing, not something you would probably be constantly running by hand. To actually be useful, a higher level version control system would need to things like:
+
+- display of values associated with targets
+- automatically set some of the values after certain operations
+- automatically transfer some values on rebasing
+- manage meta remotes and push/fetchspecs
+- run initial blobless fetch and first tree materialization
+- serialize before a push
+- push to meta remote during push to code remote
+- fetch from meta remote during fetch from code remote
+- materialize after a fetch
+
+Not much of this will be in scope for this project (though I may do some working implementations for testing). This project is only about deciding on the format and working semantics.
+
+Once we've decided the final implementation details, we will be incorporating this into the [gitbutler](https://github.com/gitbutlerapp/gitbutler) project. The more formal, detailed spec is found in the [spec](/spec) folder.

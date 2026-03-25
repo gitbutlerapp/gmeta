@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Exchange format and refs · gmeta</title>
+    <title>Serialization · gmeta</title>
     <meta name="description" content="gmeta project documentation generated from the canonical spec markdown files.">
     <link rel="stylesheet" href="../assets/style.css">
     <script>
@@ -20,7 +20,7 @@
           <a class="brand" href="../index.html">gmeta</a>
           <p class="tagline">Git metadata specification and project docs</p>
           <nav class="nav">
-            <div class="nav-group"><a href="../index.html">Overview</a></div><div class="nav-group"><h2>Exchange format</h2><a href="targets.html">Targets and keys</a><a class="active" href="exchange.html">Exchange format and refs</a><a href="materialization.html">Materialization and merge workflow</a></div><div class="nav-group"><h2>Value types</h2><a href="principles.html">Shared principles</a><a href="strings.html">Strings</a><a href="lists.html">Lists</a><a href="sets.html">Sets</a></div><div class="nav-group"><h2>Implementation</h2><a href="../implementation/storage.html">Local storage</a><a href="../implementation/standard-keys.html">Standard keys</a><a href="../implementation/cli.html">CLI surface</a><a href="../implementation/output.html">Output and query semantics</a><a href="../implementation/workflow.html">Workflow</a></div>
+            <div class="nav-group"><a href="../index.html">Overview</a></div><div class="nav-group"><h2>Exchange format</h2><a href="targets.html">Targets and keys</a><a class="active" href="exchange.html">Serialization</a><a href="materialization.html">Materialization</a></div><div class="nav-group"><h2>Value types</h2><a href="strings.html">Strings</a><a href="lists.html">Lists</a><a href="sets.html">Sets</a></div><div class="nav-group"><h2>Implementation</h2><a href="../implementation/storage.html">Local storage</a><a href="../implementation/standard-keys.html">Standard keys</a><a href="../implementation/cli.html">CLI surface</a><a href="../implementation/output.html">Output and query semantics</a><a href="../implementation/workflow.html">Workflow</a></div>
           </nav>
         </div>
         <div class="sidebar-footer">
@@ -41,14 +41,11 @@
         <header class="page-header">
           <div class="page-header-main">
             <div class="eyebrow">Generated from <a href="https://github.com/schacon/gmeta/tree/main/spec"><code>spec/*.md</code></a></div>
-            <h1>Exchange format and refs</h1>
+            <h1>Serialization</h1>
           </div>
         </header>
         <article class="doc-content">
-          <p>This document describes how to serialize metadata into Git primatives and where that data is to be stored.</p>
-<h2 id="goals">Goals</h2>
-<p>The exchange format should:</p>
-<ul><li>work over existing Git transport (use git tree and commit structures)</li><li>diff efficiently</li><li>merge structurally where possible</li><li>reconstruct current shareable state during materialization</li></ul>
+          <p>This document describes how to serialize metadata into Git primatives that can be transferred via normal Git remote protocols.</p>
 <h2 id="commit-model">Commit model</h2>
 <p>Serialization writes a Git commit whose tree contains the current shareable metadata state.</p>
 <ul><li>tree pointer</li><li>author identity</li><li>author date / commit date</li><li>ancestry for incremental materialization and merging</li></ul>
@@ -89,19 +86,6 @@
 <ul><li>sparse or pruned trees may omit data</li><li>multiple metadata refs may represent different subsets</li><li>absence should not be ambiguous</li></ul>
 <p>Intentional deletion is represented by explicit tombstones.</p>
 <p>A single reserved <code>__tombstones</code> namespace is used for both whole-key and child-level deletions. Child tombstones are interpreted relative to the current key type. Serialize and materialize must ignore incompatible child tombstones for the current type rather than treating them as errors or as deletions for another collection model.</p>
-<h2 id="large-data-considerations">Large-data considerations</h2>
-<p>This format is intended to work specifically with blobless / partial clone workflows.</p>
-<p>Large metadata histories can remain practical because:</p>
-<ul><li>trees and commits are relatively small</li><li>blobs can be fetched on demand</li><li>recent or important working sets can be prioritized</li><li>pruning strategies can reduce tip tree size without losing reconstructability of older introduced metadata</li></ul>
-<h2 id="refs">Refs</h2>
-<p>When serializing metadata, the commit/tree produced updates a local metadata ref so it can be pushed.</p>
-<p>The local serialized metadata head by default should be:</p>
-<ul><li><code>refs/meta/local</code></li></ul>
-<p>If <code>meta.namespace</code> Git config is set, that namespace should be used instead of <code>meta</code>.</p>
-<p>Fetched remote metadata heads should be stored under a remote-specific namespace, for example:</p>
-<ul><li><code>refs/meta/remotes/origin</code></li></ul>
-<p>If user has multiple local metadata destinations, the local layout would expand to directory-shaped refs such as:</p>
-<ul><li><code>refs/meta/local/public</code></li><li><code>refs/meta/local/private</code></li></ul>
         </article>
       </main>
     </div>

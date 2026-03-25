@@ -66,3 +66,22 @@ Local storage should also record enough state to support incremental materializa
 - any tombstones that still need to be emitted on serialize
 
 These are local optimization and correctness concerns and need not be fully represented in the exchange tree.
+
+## Refs
+
+When serializing metadata, the commit/tree produced updates a local metadata ref so it can be pushed.
+
+The local serialized metadata head by default should be:
+
+- `refs/meta/local`
+
+If `meta.namespace` Git config is set, that namespace should be used instead of `meta`.
+
+Fetched remote metadata heads should be stored under a remote-specific namespace, for example:
+
+- `refs/meta/remotes/origin`
+
+If user has multiple local metadata destinations, the local layout would expand to directory-shaped refs such as:
+
+- `refs/meta/local/public`
+- `refs/meta/local/private`

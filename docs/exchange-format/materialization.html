@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Materialization and merge workflow · gmeta</title>
+    <title>Materialization · gmeta</title>
     <meta name="description" content="gmeta project documentation generated from the canonical spec markdown files.">
     <link rel="stylesheet" href="../assets/style.css">
     <script>
@@ -20,7 +20,7 @@
           <a class="brand" href="../index.html">gmeta</a>
           <p class="tagline">Git metadata specification and project docs</p>
           <nav class="nav">
-            <div class="nav-group"><a href="../index.html">Overview</a></div><div class="nav-group"><h2>Exchange format</h2><a href="targets.html">Targets and keys</a><a href="exchange.html">Exchange format and refs</a><a class="active" href="materialization.html">Materialization and merge workflow</a></div><div class="nav-group"><h2>Value types</h2><a href="principles.html">Shared principles</a><a href="strings.html">Strings</a><a href="lists.html">Lists</a><a href="sets.html">Sets</a></div><div class="nav-group"><h2>Implementation</h2><a href="../implementation/storage.html">Local storage</a><a href="../implementation/standard-keys.html">Standard keys</a><a href="../implementation/cli.html">CLI surface</a><a href="../implementation/output.html">Output and query semantics</a><a href="../implementation/workflow.html">Workflow</a></div>
+            <div class="nav-group"><a href="../index.html">Overview</a></div><div class="nav-group"><h2>Exchange format</h2><a href="targets.html">Targets and keys</a><a href="exchange.html">Serialization</a><a class="active" href="materialization.html">Materialization</a></div><div class="nav-group"><h2>Value types</h2><a href="strings.html">Strings</a><a href="lists.html">Lists</a><a href="sets.html">Sets</a></div><div class="nav-group"><h2>Implementation</h2><a href="../implementation/storage.html">Local storage</a><a href="../implementation/standard-keys.html">Standard keys</a><a href="../implementation/cli.html">CLI surface</a><a href="../implementation/output.html">Output and query semantics</a><a href="../implementation/workflow.html">Workflow</a></div>
           </nav>
         </div>
         <div class="sidebar-footer">
@@ -41,15 +41,14 @@
         <header class="page-header">
           <div class="page-header-main">
             <div class="eyebrow">Generated from <a href="https://github.com/schacon/gmeta/tree/main/spec"><code>spec/*.md</code></a></div>
-            <h1>Materialization and merge workflow</h1>
+            <h1>Materialization</h1>
           </div>
         </header>
         <article class="doc-content">
-          <p>This document describes the exchange-level rules for turning serialized metadata commits back into local current state.</p>
-<p>For higher-level coordination with a version control system&#x27;s push and pull operations, see <a href="../implementation/workflow.html">Workflow</a>.</p>
+          <p>This document describes the rules for turning a serialized metadata tree back into local current state.</p>
 <h2 id="materialize-responsibilities">Materialize responsibilities</h2>
 <p>When materializing a remote metadata head, the client must:</p>
-<ol><li>merge that head into local metadata history</li><li>resolve merge conflicts according to value-type semantics</li><li>update the local SQLite database with newly visible values and tombstones</li><li>record when materialization succeeded</li></ol>
+<ol><li>merge that head in memory into local serialized metadata</li><li>resolve merge conflicts according to value-type semantics</li><li>update the local SQLite database with newly visible values and tombstones</li><li>record when materialization succeeded</li></ol>
 <p>Per-type conflict rules are defined in:</p>
 <ul><li><a href="strings.html">Strings</a></li><li><a href="lists.html">Lists</a></li><li><a href="sets.html">Sets</a></li></ul>
 <h2 id="high-level-scenarios">High-level scenarios</h2>
@@ -63,33 +62,25 @@
 <p>This allows eventual convergence while keeping history linear.</p>
 <h3 id="3-fast-forward-update">3. Fast-forward update</h3>
 <p>If the incoming metadata ref is a fast-forward from the last materialized point:</p>
-<ul><li>diff the old materialized tree against the new tree</li><li>apply only changed paths to SQLite</li><li>add or update visible values</li><li>apply tombstones</li><li>record the new materialized commit</li></ul>
-<p>This is the common efficient update path.</p>
+<ul><li>diff the old materialized tree against the new tree</li><li>apply only changed key/values to SQLite</li><li>add or update visible values and tombstones</li></ul>
 <h3 id="4-both-sides-mutated-data">4. Both sides mutated data</h3>
 <p>If local data changed and remote data also changed:</p>
-<ul><li>serialize local current shareable state</li><li>merge the remote tree into it</li><li>resolve conflicts according to per-type semantics</li><li>write a new metadata commit from the merged tree</li><li>retry against newer remote heads until a fast-forward push succeeds</li></ul>
+<ul><li>serialize local current shareable state</li><li>merge the remote tree into it</li><li>resolve conflicts according to per-type semantics</li><li>write a new metadata commit from the merged tree</li></ul>
+<p>On push, if it is again not a fast-forward, do this sequence repeatedly against newer remote heads until a fast-forward push succeeds. Only one new commit locally needs to be made.</p>
 <h2 id="no-common-ancestor-merge">No common ancestor merge</h2>
 <p>If local and remote metadata histories have no common ancestor, materialize uses a two-way merge instead of a three-way merge.</p>
-<p>Policy:</p>
 <ol><li>union non-conflicting keys from both sides</li><li>for overlapping keys or value-vs-tombstone conflicts, remote wins</li><li>retain non-overlapping keys from both sides</li></ol>
-<p><code>gmeta materialize --dry-run</code> should report this explicitly, for example:</p>
-<ul><li><code>strategy=two-way-no-common-ancestor</code></li></ul>
-<p>and should print key-level conflict decisions.</p>
 <h2 id="removal-handling">Removal handling</h2>
 <p>Deletion is explicit.</p>
 <p>During materialization:</p>
-<ul><li>whole-key tombstones remove keys locally and are recorded in SQLite</li><li>per-entry or per-member tombstones are applied according to the collection type</li></ul>
-<h3 id="legacy-compatibility">Legacy compatibility</h3>
-<p>During fast-forward materialization, implementations may also detect keys that existed in the previous local tree but are missing from the incoming tree and remove them locally for compatibility with old metadata histories that predate tombstones.</p>
-<p>This should be treated as a compatibility bridge, not the long-term deletion model.</p>
-<h2 id="serialization-after-materialization">Serialization after materialization</h2>
-<p>After a successful materialization, later serialization can use local bookkeeping to update only values changed since the last materialized point.</p>
-<p>This is an optimization, not a semantic requirement.</p>
+<ul><li>whole-key tombstones remove keys locally</li><li>per-entry or per-member tombstones are applied according to the collection type</li></ul>
 <h2 id="metadata-history-shape">Metadata history shape</h2>
 <p>Unlike source-code history, metadata history does not need rich branch/merge topology.</p>
 <p>The preferred shape is linear history created by repeatedly:</p>
 <ul><li>merging in memory</li><li>writing a new commit</li><li>fast-forward pushing</li></ul>
 <p>The main goal is convergence on current metadata state, not preserving meaningful branch structure.</p>
+<h2 id="merging">Merging</h2>
+<ul><li>update locally, pruned remotely?</li></ul>
         </article>
       </main>
     </div>
