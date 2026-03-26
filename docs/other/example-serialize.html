@@ -368,6 +368,182 @@
         background: transparent;
         border-color: #f8514933;
       }
+
+      /* Prune banner */
+      .prune-banner {
+        background: #161b22;
+        border: 1px solid #f8514944;
+        border-left: 3px solid #f85149;
+        border-radius: 6px;
+        padding: 14px 18px;
+        margin-bottom: 24px;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #c9d1d9;
+        display: none;
+      }
+      .prune-banner.visible {
+        display: block;
+      }
+      .prune-banner strong {
+        color: #f85149;
+      }
+      .prune-banner code {
+        background: #21262d;
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-size: 12px;
+        color: #e6edf3;
+      }
+
+      /* Add metadata button */
+      .add-btn {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 6px 14px;
+        font-family: inherit;
+        font-size: 12px;
+        color: #3fb950;
+        background: transparent;
+        border: 1px solid #3fb95066;
+        border-radius: 6px;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
+      .add-btn:hover {
+        background: #3fb95018;
+        border-color: #3fb950;
+      }
+
+      /* Modal overlay */
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 100;
+        align-items: center;
+        justify-content: center;
+      }
+      .modal-overlay.visible {
+        display: flex;
+      }
+      .modal {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        width: 440px;
+        max-width: 95vw;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+      }
+      .modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 18px;
+        border-bottom: 1px solid #21262d;
+      }
+      .modal-header h2 {
+        font-size: 14px;
+        color: #e6edf3;
+        font-weight: 600;
+      }
+      .modal-close {
+        background: none;
+        border: none;
+        color: #8b949e;
+        font-size: 18px;
+        cursor: pointer;
+        padding: 0 4px;
+        line-height: 1;
+      }
+      .modal-close:hover {
+        color: #e6edf3;
+      }
+      .modal-body {
+        padding: 18px;
+      }
+      .modal-body label {
+        display: block;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #8b949e;
+        margin-bottom: 6px;
+        margin-top: 14px;
+      }
+      .modal-body label:first-child {
+        margin-top: 0;
+      }
+      .modal-body select,
+      .modal-body input {
+        width: 100%;
+        padding: 8px 10px;
+        font-family: inherit;
+        font-size: 13px;
+        color: #e6edf3;
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        outline: none;
+      }
+      .modal-body select:focus,
+      .modal-body input:focus {
+        border-color: #58a6ff;
+      }
+      .modal-body .field-hint {
+        font-size: 11px;
+        color: #484f58;
+        margin-top: 4px;
+      }
+      .modal-body .auto-sha {
+        font-size: 11px;
+        color: #8b949e;
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 8px 10px;
+        word-break: break-all;
+        user-select: all;
+      }
+      .modal-footer {
+        padding: 14px 18px;
+        border-top: 1px solid #21262d;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+      .modal-footer button {
+        font-family: inherit;
+        font-size: 12px;
+        padding: 7px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        border: 1px solid transparent;
+      }
+      .btn-cancel {
+        color: #c9d1d9;
+        background: #21262d;
+        border-color: #30363d;
+      }
+      .btn-cancel:hover {
+        background: #30363d;
+      }
+      .btn-serialize {
+        color: #fff;
+        background: #238636;
+        border-color: #2ea043;
+        font-weight: 600;
+      }
+      .btn-serialize:hover {
+        background: #2ea043;
+      }
+      .btn-serialize:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
     </style>
   </head>
   <body>
@@ -377,13 +553,70 @@
       view their contents.
     </p>
 
+    <div class="prune-banner" id="prune-banner">
+      <strong>Prune commit created.</strong>
+      Metadata attached to ephemeral targets like <code>commit</code> SHAs and
+      <code>path</code> entries can accumulate over time and bloat the
+      metadata ref. A prune commit removes these scopes from the tree,
+      keeping only durable metadata (<code>branch</code> and
+      <code>project</code>). Because the pruned data is still reachable in
+      earlier commits, it can be recovered from git history if needed &mdash;
+      but the current tree stays lean. This is the equivalent of garbage
+      collecting metadata that is no longer relevant to the active state of
+      the repository.
+    </div>
+
     <div class="columns" id="app">
       <!-- Commits column -->
       <div class="column" id="col-commits" style="min-width: 280px">
         <div class="column-header">Commits (refs/meta/local)</div>
         <div id="commit-list-container"></div>
+        <button class="add-btn" id="add-btn">+ Add metadata</button>
         <button class="prune-btn" id="prune-btn">+ Prune metadata</button>
       </div>
+
+    <!-- Add metadata modal -->
+    <div class="modal-overlay" id="modal-overlay">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Serialize New Metadata</h2>
+          <button class="modal-close" id="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <label>Target type</label>
+          <select id="m-target">
+            <option value="commit">commit</option>
+            <option value="path">path</option>
+            <option value="branch">branch</option>
+            <option value="project">project</option>
+          </select>
+
+          <label>Target value</label>
+          <div id="m-target-value-wrap">
+            <div class="auto-sha" id="m-auto-sha"></div>
+          </div>
+          <div class="field-hint" id="m-target-hint">Auto-generated commit SHA</div>
+
+          <label>Value type</label>
+          <select id="m-valtype">
+            <option value="string">string</option>
+            <option value="set">set</option>
+            <option value="list">list</option>
+          </select>
+
+          <label>Key (colon-separated)</label>
+          <input type="text" id="m-key" placeholder="e.g. agent:model" />
+
+          <label id="m-value-label">Value</label>
+          <input type="text" id="m-value" placeholder="e.g. claude-opus-4.6" />
+          <div class="field-hint" id="m-value-hint">For set/list: comma-separated entries</div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" id="modal-cancel">Cancel</button>
+          <button class="btn-serialize" id="modal-serialize">Serialize</button>
+        </div>
+      </div>
+    </div>
 
       <div class="arrow-area">
         <svg width="40" height="20">
@@ -827,55 +1060,33 @@
         commitListContainer.appendChild(list);
       }
 
-      function selectCommit(el, commit) {
+      function selectCommit(el, commit, highlightScope) {
         if (activeCommitEl) activeCommitEl.classList.remove("active");
         el.classList.add("active");
         activeCommitEl = el;
         selectedRowEl = null;
-        renderTree(commit.tree);
+        renderTree(commit.tree, highlightScope);
         blobView.innerHTML =
           '<span style="color:#484f58">Click a blob entry to view its content</span>';
       }
 
-      function renderTree(root) {
+      function renderTree(root, highlightScope) {
         const container = document.createElement("div");
         container.className = "file-tree";
 
         let lastScope = { val: null };
-        buildTreeDOM(root.children, 0, [], container, null, lastScope);
+        buildTreeDOM(
+          root.children,
+          0,
+          [],
+          container,
+          null,
+          lastScope,
+          highlightScope,
+        );
 
         treeView.innerHTML = "";
         treeView.appendChild(container);
-      }
-
-      // Determine the role of a node: "target" (addressing/structural)
-      // or "key" (user-defined key segments)
-      function getNodeRole(scope, pathParts, nodeName, isBlob) {
-        // pathParts includes current node already
-        const depth = pathParts.length; // 1-based depth within scope
-        const isReserved = nodeName.startsWith("__");
-
-        if (isReserved) return null; // structural markers get no role
-        if (isBlob) return null; // leaf values get no role tint
-
-        if (scope === "project") {
-          // project itself is target (depth 1), rest is key
-          return depth <= 1 ? "target" : "key";
-        }
-        if (scope === "commit" || scope === "branch") {
-          // scope-name / fanout / target-value = target (depths 1-3)
-          // everything after = key
-          return depth <= 3 ? "target" : "key";
-        }
-        if (scope === "path") {
-          // Everything up to and including __target__ is target.
-          // Since __target__ itself is reserved (returns null above),
-          // we check: is __target__ in path yet?
-          const targetIdx = pathParts.indexOf("__target__");
-          if (targetIdx < 0) return "target"; // before __target__
-          return "key"; // after __target__
-        }
-        return null;
       }
 
       function buildTreeDOM(
@@ -885,6 +1096,7 @@
         parentEl,
         currentScope,
         lastScope,
+        highlightScope,
       ) {
         children.forEach((node, nodeIdx) => {
           const scope = node.scope || currentScope;
@@ -895,9 +1107,11 @@
           const hasChildren =
             !isBlob && node.children && node.children.length > 0;
 
-          // Determine role within the scope path
-          const scopePath = path.slice(1); // strip root scope name for depth calc
-          const role = getNodeRole(scope, path, node.name, isBlob);
+          // Should this top-level scope start collapsed?
+          const collapseThis =
+            highlightScope &&
+            node.scope &&
+            node.scope !== highlightScope;
 
           // Scope separator
           if (scope && scope !== lastScope.val) {
@@ -933,12 +1147,15 @@
             : "#58a6ff";
 
           // Row element
-          const roleClass = role ? " role-" + role : "";
+          const startExpanded = hasChildren && !collapseThis;
           const row = document.createElement("div");
           row.className =
             "tree-row clickable" +
-            (hasChildren ? " expanded" : "") +
-            roleClass;
+            (hasChildren
+              ? startExpanded
+                ? " expanded"
+                : " collapsed"
+              : "");
 
           for (let i = 0; i < depth; i++) {
             const indent = document.createElement("span");
@@ -975,7 +1192,8 @@
           let childrenEl = null;
           if (hasChildren) {
             childrenEl = document.createElement("div");
-            childrenEl.className = "tree-children";
+            childrenEl.className =
+              "tree-children" + (collapseThis ? " hidden" : "");
             parentEl.appendChild(childrenEl);
             buildTreeDOM(
               node.children,
@@ -984,6 +1202,7 @@
               childrenEl,
               scope,
               lastScope,
+              highlightScope,
             );
           }
 
@@ -1222,6 +1441,7 @@
         if (pruned) return;
         pruned = true;
         pruneBtn.disabled = true;
+        document.getElementById("prune-banner").classList.add("visible");
 
         const pruneCommit = {
           sha: sha("commit-3-prune"),
@@ -1241,6 +1461,344 @@
           ".commit-wrapper .obj",
         );
         if (firstEl) selectCommit(firstEl, commits[0]);
+      });
+
+      // ── Add metadata modal ──
+      const addBtn = document.getElementById("add-btn");
+      const modalOverlay = document.getElementById("modal-overlay");
+      const modalClose = document.getElementById("modal-close");
+      const modalCancel = document.getElementById("modal-cancel");
+      const modalSerialize = document.getElementById("modal-serialize");
+      const mTarget = document.getElementById("m-target");
+      const mTargetValueWrap = document.getElementById("m-target-value-wrap");
+      const mTargetHint = document.getElementById("m-target-hint");
+      const mAutoSha = document.getElementById("m-auto-sha");
+      const mValtype = document.getElementById("m-valtype");
+      const mKey = document.getElementById("m-key");
+      const mValue = document.getElementById("m-value");
+      const mValueHint = document.getElementById("m-value-hint");
+      const mValueLabel = document.getElementById("m-value-label");
+
+      let addCounter = 0;
+
+      function generateSha() {
+        return sha("user-commit-" + Date.now() + "-" + addCounter);
+      }
+
+      function updateModal() {
+        const target = mTarget.value;
+        const valtype = mValtype.value;
+
+        // Target value field
+        if (target === "commit") {
+          mTargetValueWrap.innerHTML = `<div class="auto-sha" id="m-auto-sha">${generateSha()}</div>`;
+          mTargetHint.textContent = "Auto-generated commit SHA";
+          mTargetHint.style.display = "";
+        } else if (target === "project") {
+          mTargetValueWrap.innerHTML = `<div class="auto-sha" style="color:#484f58; font-style:italic;">No target value needed</div>`;
+          mTargetHint.textContent = "Project scope is global";
+          mTargetHint.style.display = "";
+        } else if (target === "path") {
+          mTargetValueWrap.innerHTML = `<input type="text" id="m-target-input" placeholder="e.g. src/utils" />`;
+          mTargetHint.textContent = "File or directory path";
+          mTargetHint.style.display = "";
+        } else {
+          mTargetValueWrap.innerHTML = `<input type="text" id="m-target-input" placeholder="e.g. sc-feature-1" />`;
+          mTargetHint.textContent = "Branch name";
+          mTargetHint.style.display = "";
+        }
+
+        // Value hint
+        if (valtype === "string") {
+          mValueHint.textContent = "A single string value";
+          mValueLabel.textContent = "Value";
+          mValue.placeholder = "e.g. claude-opus-4.6";
+        } else if (valtype === "set") {
+          mValueHint.textContent = "Comma-separated unique members";
+          mValueLabel.textContent = "Members";
+          mValue.placeholder = "e.g. alice, bob";
+        } else {
+          mValueHint.textContent = "Comma-separated list entries";
+          mValueLabel.textContent = "Entries";
+          mValue.placeholder = "e.g. first item, second item";
+        }
+      }
+
+      function openModal() {
+        mKey.value = "";
+        mValue.value = "";
+        mTarget.value = "commit";
+        mValtype.value = "string";
+        updateModal();
+        modalOverlay.classList.add("visible");
+      }
+
+      function closeModal() {
+        modalOverlay.classList.remove("visible");
+      }
+
+      addBtn.addEventListener("click", openModal);
+      modalClose.addEventListener("click", closeModal);
+      modalCancel.addEventListener("click", closeModal);
+      modalOverlay.addEventListener("click", (e) => {
+        if (e.target === modalOverlay) closeModal();
+      });
+      mTarget.addEventListener("change", updateModal);
+      mValtype.addEventListener("change", updateModal);
+
+      // Deep clone a tree
+      function cloneTree(node) {
+        const copy = { ...node };
+        if (node.children) {
+          copy.children = node.children.map((c) => cloneTree(c));
+        }
+        if (node.blobContent) {
+          copy.blobContent = { ...node.blobContent };
+        }
+        return copy;
+      }
+
+      // Recursively merge src tree into dst tree
+      function mergeTreeNode(dst, src) {
+        if (!src.children) return;
+        if (!dst.children) dst.children = [];
+        src.children.forEach((srcChild) => {
+          const existingIdx = dst.children.findIndex(
+            (c) => c.name === srcChild.name,
+          );
+          if (existingIdx >= 0) {
+            const existing = dst.children[existingIdx];
+            if (srcChild.children && existing.children) {
+              // Both are trees: recurse
+              mergeTreeNode(existing, srcChild);
+              existing.sha = sha(
+                "merged-" + existing.name + "-" + addCounter,
+              );
+            } else {
+              // Replace (blob or leaf tree overwrite)
+              dst.children[existingIdx] = srcChild;
+            }
+          } else {
+            dst.children.push(srcChild);
+          }
+        });
+        // Preserve scope if src has one
+        if (src.scope && !dst.scope) dst.scope = src.scope;
+      }
+
+      // Build the subtree for a target's key+value
+      function buildValueSubtree(keySegments, valtype, rawValue) {
+        const values = rawValue
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+
+        // Build leaf
+        let leaf;
+        if (valtype === "string") {
+          leaf = {
+            name: "__value",
+            sha: blobSha(rawValue),
+            type: "blob",
+            blobContent: { type: "string", value: rawValue },
+          };
+        } else if (valtype === "set") {
+          leaf = {
+            name: "__set",
+            sha: sha("set-" + rawValue),
+            type: "tree",
+            children: values.map((v) => ({
+              name: sha(v).slice(0, 8),
+              sha: blobSha(v),
+              type: "blob",
+              blobContent: { type: "set", value: v },
+            })),
+          };
+        } else {
+          // list
+          const now = Date.now();
+          leaf = {
+            name: "__list",
+            sha: sha("list-" + rawValue),
+            type: "tree",
+            children: values.map((v, i) => {
+              const entryId =
+                (now + i) + "-" + sha(v).slice(0, 5);
+              return {
+                name: entryId,
+                sha: blobSha(v),
+                type: "blob",
+                blobContent: { type: "list", value: v, id: entryId },
+              };
+            }),
+          };
+        }
+
+        // Wrap in key segments (build inside-out)
+        let current = leaf;
+        for (let i = keySegments.length - 1; i >= 0; i--) {
+          current = {
+            name: keySegments[i],
+            sha: sha("key-" + keySegments.slice(0, i + 1).join(":")),
+            type: "tree",
+            children: [current],
+          };
+        }
+        return current;
+      }
+
+      // Build the target-specific path wrapper and inject into tree
+      function buildTargetSubtree(targetType, targetValue, keyTree) {
+        if (targetType === "project") {
+          return {
+            name: "project",
+            sha: sha("new-project-" + addCounter),
+            type: "tree",
+            scope: "project",
+            children: [keyTree],
+          };
+        }
+
+        if (targetType === "commit") {
+          return {
+            name: "commit",
+            sha: sha("new-commit-dir-" + addCounter),
+            type: "tree",
+            scope: "commit",
+            children: [
+              {
+                name: targetValue.slice(0, 2),
+                sha: sha("new-commit-fanout-" + addCounter),
+                type: "tree",
+                children: [
+                  {
+                    name: targetValue,
+                    sha: sha("new-commit-target-" + addCounter),
+                    type: "tree",
+                    truncName: targetValue.slice(0, 16) + "...",
+                    children: [keyTree],
+                  },
+                ],
+              },
+            ],
+          };
+        }
+
+        if (targetType === "path") {
+          const pathSegs = targetValue
+            .split("/")
+            .filter(Boolean);
+          let inner = {
+            name: "__target__",
+            sha: sha("new-path-target-" + addCounter),
+            type: "tree",
+            children: [keyTree],
+          };
+          for (let i = pathSegs.length - 1; i >= 0; i--) {
+            inner = {
+              name: pathSegs[i],
+              sha: sha("new-path-" + pathSegs[i] + "-" + addCounter),
+              type: "tree",
+              children: [inner],
+            };
+          }
+          return {
+            name: "path",
+            sha: sha("new-path-dir-" + addCounter),
+            type: "tree",
+            scope: "path",
+            children: [inner],
+          };
+        }
+
+        // branch
+        const fanout = sha(targetValue).slice(0, 2);
+        return {
+          name: "branch",
+          sha: sha("new-branch-dir-" + addCounter),
+          type: "tree",
+          scope: "branch",
+          children: [
+            {
+              name: fanout,
+              sha: sha("new-branch-fanout-" + addCounter),
+              type: "tree",
+              children: [
+                {
+                  name: targetValue,
+                  sha: sha("new-branch-target-" + addCounter),
+                  type: "tree",
+                  children: [keyTree],
+                },
+              ],
+            },
+          ],
+        };
+      }
+
+      modalSerialize.addEventListener("click", () => {
+        const targetType = mTarget.value;
+        const valtype = mValtype.value;
+        const key = mKey.value.trim();
+        const value = mValue.value.trim();
+
+        if (!key || !value) return;
+
+        let targetValue = "";
+        if (targetType === "commit") {
+          targetValue = document.querySelector("#m-target-value-wrap .auto-sha")
+            ?.textContent || generateSha();
+        } else if (targetType !== "project") {
+          const inp = document.getElementById("m-target-input");
+          targetValue = inp ? inp.value.trim() : "";
+          if (!targetValue) return;
+        }
+
+        addCounter++;
+
+        const keySegments = key.split(":").filter(Boolean);
+        const keyTree = buildValueSubtree(keySegments, valtype, value);
+        const targetSubtree = buildTargetSubtree(
+          targetType,
+          targetValue,
+          keyTree,
+        );
+
+        // Clone head commit's tree and deep-merge in the new scope
+        // Wrap targetSubtree as a root so merge matches at the scope level
+        const headTree = cloneTree(commits[0].tree);
+        mergeTreeNode(headTree, { children: [targetSubtree] });
+        // Sort top-level: commit, path, branch, project
+        const order = { commit: 0, path: 1, branch: 2, project: 3 };
+        headTree.children.sort(
+          (a, b) => (order[a.name] ?? 99) - (order[b.name] ?? 99),
+        );
+
+        headTree.sha = sha("new-root-" + addCounter);
+
+        const desc =
+          valtype + " " + key + " on " + targetType +
+          (targetType !== "project" ? " " + (targetValue.length > 20 ? targetValue.slice(0, 18) + ".." : targetValue) : "");
+
+        const newCommit = {
+          sha: sha("user-meta-commit-" + addCounter),
+          parentSha: commits[0].sha,
+          treeSha: headTree.sha,
+          tree: headTree,
+          message: desc,
+          date: new Date().toISOString().replace("T", " ").slice(0, 19),
+        };
+
+        commits.unshift(newCommit);
+        activeCommitEl = null;
+        renderCommits();
+
+        const firstEl = commitListContainer.querySelector(
+          ".commit-wrapper .obj",
+        );
+        if (firstEl) selectCommit(firstEl, commits[0], targetType);
+
+        closeModal();
       });
 
       // ── Init ──
