@@ -1,10 +1,7 @@
 ## Notes
 
-- serialize and materialize debugging output
 - delete specific list entries (by value?)
 - serialize filter rules
-- pruning rules
-- import does pruning
 - remote management and pushspecs
 - run initial blobless fetch and first tree materialization
 - namespaces (local, shared, internal, etc - push targets (none, remote)
