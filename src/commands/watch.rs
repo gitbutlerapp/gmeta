@@ -16,7 +16,6 @@ const BOLD: &str = "\x1b[1m";
 const DIM: &str = "\x1b[2m";
 const GREEN: &str = "\x1b[32m";
 const YELLOW: &str = "\x1b[33m";
-const BLUE: &str = "\x1b[34m";
 const MAGENTA: &str = "\x1b[35m";
 const CYAN: &str = "\x1b[36m";
 const RED: &str = "\x1b[31m";
@@ -272,13 +271,7 @@ impl WatchState {
                                 }
                             }
                             Some("tool_use") => {
-                                let name = block["name"].as_str().unwrap_or("?");
-                                let input = &block["input"];
-                                let detail = tool_detail(name, input);
-                                eprintln!(
-                                    "  {}[tool]{} {}{}{} {}",
-                                    BLUE, RESET, BOLD, name, RESET, detail
-                                );
+                                // Skip tool calls — too noisy
                             }
                             _ => {}
                         }
@@ -574,32 +567,6 @@ fn get_change_id(workdir: &Path, show_id: &str) -> Option<String> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let json: serde_json::Value = serde_json::from_str(&stdout).ok()?;
     json["changeId"].as_str().map(|s| s.to_string())
-}
-
-fn tool_detail(name: &str, input: &serde_json::Value) -> String {
-    match name {
-        "Read" | "Write" | "Edit" => input["file_path"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
-        "Bash" => input["command"]
-            .as_str()
-            .map(|c| truncate(c.trim(), 60))
-            .unwrap_or_default(),
-        "Grep" => input["pattern"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
-        "Glob" => input["pattern"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
-        "Agent" => input["description"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
-        _ => String::new(),
-    }
 }
 
 fn truncate(s: &str, max: usize) -> String {
