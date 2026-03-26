@@ -329,6 +329,33 @@
         color: #484f58;
         padding: 4px 6px 2px;
       }
+
+      /* Prune button */
+      .prune-btn {
+        display: inline-block;
+        margin-top: 12px;
+        padding: 6px 14px;
+        font-family: inherit;
+        font-size: 12px;
+        color: #f85149;
+        background: transparent;
+        border: 1px solid #f8514966;
+        border-radius: 6px;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
+      .prune-btn:hover {
+        background: #f8514918;
+        border-color: #f85149;
+      }
+      .prune-btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+        background: transparent;
+        border-color: #f8514933;
+      }
     </style>
   </head>
   <body>
@@ -342,6 +369,8 @@
       <!-- Commits column -->
       <div class="column" id="col-commits" style="min-width: 280px">
         <div class="column-header">Commits (refs/meta/local)</div>
+        <div id="commit-list-container"></div>
+        <button class="prune-btn" id="prune-btn">+ Prune metadata</button>
       </div>
 
       <div class="arrow-area">
@@ -736,14 +765,19 @@
       ];
 
       // ── Rendering ──
-      const colCommits = document.getElementById("col-commits");
+      const commitListContainer = document.getElementById(
+        "commit-list-container",
+      );
       const treeView = document.getElementById("tree-view");
       const blobView = document.getElementById("blob-view");
+      const pruneBtn = document.getElementById("prune-btn");
 
       let activeCommitEl = null;
       let selectedRowEl = null;
+      let pruned = false;
 
       function renderCommits() {
+        commitListContainer.innerHTML = "";
         const list = document.createElement("div");
         list.className = "commit-list";
 
@@ -778,7 +812,7 @@
           list.appendChild(wrapper);
         });
 
-        colCommits.appendChild(list);
+        commitListContainer.appendChild(list);
       }
 
       function selectCommit(el, commit) {
@@ -970,10 +1004,128 @@
           .replace(/>/g, "&gt;");
       }
 
+      // ── Prune button ──
+      function buildPrunedTree() {
+        // Tree with commit and path removed, only branch + project remain
+        return {
+          name: "/",
+          sha: sha("pruned-root"),
+          type: "tree",
+          children: [
+            {
+              name: "branch",
+              sha: sha("branch-dir"),
+              type: "tree",
+              scope: "branch",
+              children: [
+                {
+                  name: sha("sc-feature-1").slice(0, 2),
+                  sha: sha("branch-fanout"),
+                  type: "tree",
+                  children: [
+                    {
+                      name: "sc-feature-1",
+                      sha: sha("branch-target"),
+                      type: "tree",
+                      children: [
+                        {
+                          name: "review",
+                          sha: sha("branch-review"),
+                          type: "tree",
+                          children: [
+                            {
+                              name: "comments",
+                              sha: sha("branch-review-comments"),
+                              type: "tree",
+                              children: [
+                                {
+                                  name: "__list",
+                                  sha: sha("branch-list"),
+                                  type: "tree",
+                                  children: LIST_ENTRIES.map((e) => ({
+                                    name: e.id,
+                                    sha: blobSha(e.value),
+                                    type: "blob",
+                                    blobContent: {
+                                      type: "list",
+                                      value: e.value,
+                                      id: e.id,
+                                    },
+                                  })),
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              name: "project",
+              sha: sha("project-dir"),
+              type: "tree",
+              scope: "project",
+              children: [
+                {
+                  name: "config",
+                  sha: sha("project-config"),
+                  type: "tree",
+                  children: [
+                    {
+                      name: "default-branch",
+                      sha: sha("project-default-branch"),
+                      type: "tree",
+                      children: [
+                        {
+                          name: "__value",
+                          sha: blobSha("main"),
+                          type: "blob",
+                          blobContent: { type: "string", value: "main" },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        };
+      }
+
+      pruneBtn.addEventListener("click", () => {
+        if (pruned) return;
+        pruned = true;
+        pruneBtn.disabled = true;
+
+        const pruneCommit = {
+          sha: sha("commit-3-prune"),
+          parentSha: commits[0].sha,
+          treeSha: sha("pruned-root"),
+          tree: buildPrunedTree(),
+          message: "Prune commit + path metadata",
+          date: "2026-03-26 10:02:37",
+        };
+
+        commits.unshift(pruneCommit);
+        activeCommitEl = null;
+        renderCommits();
+
+        // Auto-select the new prune commit
+        const firstEl = commitListContainer.querySelector(
+          ".commit-wrapper .obj",
+        );
+        if (firstEl) selectCommit(firstEl, commits[0]);
+      });
+
       // ── Init ──
       renderCommits();
       // Auto-select first commit
-      const firstCommitEl = colCommits.querySelector(".commit-wrapper .obj");
+      const firstCommitEl = commitListContainer.querySelector(
+        ".commit-wrapper .obj",
+      );
       if (firstCommitEl) selectCommit(firstCommitEl, commits[0]);
     </script>
   </body>
