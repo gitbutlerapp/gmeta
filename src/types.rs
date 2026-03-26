@@ -314,6 +314,15 @@ pub fn build_set_tree_dir_path(target: &Target, key: &str) -> Result<String> {
     Ok(format!("{}/{}", key_path, SET_VALUE_DIR))
 }
 
+pub fn build_list_entry_tombstone_tree_path(
+    target: &Target,
+    key: &str,
+    entry_name: &str,
+) -> Result<String> {
+    let key_path = build_key_tree_path(target, key)?;
+    Ok(format!("{}/{}/{}/{}", key_path, LIST_VALUE_DIR, TOMBSTONE_ROOT, entry_name))
+}
+
 pub fn build_set_member_tombstone_tree_path(
     target: &Target,
     key: &str,

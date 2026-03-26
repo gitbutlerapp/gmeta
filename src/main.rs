@@ -42,6 +42,12 @@ fn main() -> Result<()> {
 
         Commands::ListPop { target, key, value } => commands::list::run_pop(&target, &key, &value),
 
+        Commands::ListRm {
+            target,
+            key,
+            index,
+        } => commands::list::run_rm(&target, &key, index),
+
         Commands::SetAdd { target, key, value } => commands::set::run_add(&target, &key, &value),
 
         Commands::SetRm { target, key, value } => commands::set::run_rm(&target, &key, &value),

@@ -6,10 +6,11 @@ use crate::db::Db;
 use crate::git_utils;
 use crate::list_value::{encode_entries, parse_timestamp_from_entry_name, ListEntry};
 use crate::types::{
-    build_list_tree_dir_path, build_set_member_tombstone_tree_path, build_set_tree_dir_path,
-    build_tombstone_tree_path, build_tree_path, decode_key_path_segments,
-    decode_path_target_segments, set_member_id, Target, LIST_VALUE_DIR, PATH_TARGET_SEPARATOR,
-    SET_VALUE_DIR, STRING_VALUE_BLOB, TOMBSTONE_BLOB, TOMBSTONE_ROOT,
+    build_list_entry_tombstone_tree_path, build_list_tree_dir_path,
+    build_set_member_tombstone_tree_path, build_set_tree_dir_path, build_tombstone_tree_path,
+    build_tree_path, decode_key_path_segments, decode_path_target_segments, set_member_id, Target,
+    LIST_VALUE_DIR, PATH_TARGET_SEPARATOR, SET_VALUE_DIR, STRING_VALUE_BLOB, TOMBSTONE_BLOB,
+    TOMBSTONE_ROOT,
 };
 
 type Key = (String, String, String); // (target_type, target_value, key)
@@ -33,6 +34,7 @@ struct ParsedTree {
     values: BTreeMap<Key, TreeValue>,
     tombstones: BTreeMap<Key, TombstoneEntry>,
     set_tombstones: BTreeMap<(Key, String), String>,
+    list_tombstones: BTreeMap<(Key, String), TombstoneEntry>,
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -287,6 +289,7 @@ pub fn run(remote: Option<&str>, dry_run: bool, verbose: bool) -> Result<()> {
                     &remote_entries.values,
                     &remote_entries.tombstones,
                     &remote_entries.set_tombstones,
+                    &remote_entries.list_tombstones,
                     &mut planned_removals,
                 )?;
 
@@ -310,6 +313,7 @@ pub fn run(remote: Option<&str>, dry_run: bool, verbose: bool) -> Result<()> {
                 &remote_entries.values,
                 &remote_entries.tombstones,
                 &remote_entries.set_tombstones,
+                &remote_entries.list_tombstones,
                 &email,
                 now,
             )?;
@@ -370,6 +374,7 @@ pub fn run(remote: Option<&str>, dry_run: bool, verbose: bool) -> Result<()> {
                 merged_values,
                 merged_tombstones,
                 merged_set_tombstones,
+                merged_list_tombstones,
                 conflict_decisions,
                 merge_strategy,
             ) = if let Some(base_oid) = merge_base_oid {
@@ -455,13 +460,19 @@ pub fn run(remote: Option<&str>, dry_run: bool, verbose: bool) -> Result<()> {
                     &remote_entries.set_tombstones,
                     &merged_values,
                 );
+                let merged_list_tombstones = merge_list_tombstones(
+                    &local_entries.list_tombstones,
+                    &remote_entries.list_tombstones,
+                    &merged_values,
+                );
 
                 if verbose {
                     eprintln!(
-                        "[verbose] merged result: {} values, {} tombstones, {} set tombstones, {} conflicts",
+                        "[verbose] merged result: {} values, {} tombstones, {} set tombstones, {} list tombstones, {} conflicts",
                         merged_values.len(),
                         merged_tombstones.len(),
                         merged_set_tombstones.len(),
+                        merged_list_tombstones.len(),
                         conflict_decisions.len()
                     );
                 }
@@ -470,6 +481,7 @@ pub fn run(remote: Option<&str>, dry_run: bool, verbose: bool) -> Result<()> {
                     merged_values,
                     merged_tombstones,
                     merged_set_tombstones,
+                    merged_list_tombstones,
                     conflict_decisions,
                     "three-way",
                 )
@@ -490,13 +502,19 @@ pub fn run(remote: Option<&str>, dry_run: bool, verbose: bool) -> Result<()> {
                     &remote_entries.set_tombstones,
                     &merged_values,
                 );
+                let merged_list_tombstones = merge_list_tombstones(
+                    &local_entries.list_tombstones,
+                    &remote_entries.list_tombstones,
+                    &merged_values,
+                );
 
                 if verbose {
                     eprintln!(
-                        "[verbose] merged result: {} values, {} tombstones, {} set tombstones, {} conflicts",
+                        "[verbose] merged result: {} values, {} tombstones, {} set tombstones, {} list tombstones, {} conflicts",
                         merged_values.len(),
                         merged_tombstones.len(),
                         merged_set_tombstones.len(),
+                        merged_list_tombstones.len(),
                         conflict_decisions.len()
                     );
                 }
@@ -505,6 +523,7 @@ pub fn run(remote: Option<&str>, dry_run: bool, verbose: bool) -> Result<()> {
                     merged_values,
                     merged_tombstones,
                     merged_set_tombstones,
+                    merged_list_tombstones,
                     conflict_decisions,
                     "two-way-no-common-ancestor",
                 )
@@ -529,6 +548,7 @@ pub fn run(remote: Option<&str>, dry_run: bool, verbose: bool) -> Result<()> {
                     &merged_values,
                     &merged_tombstones,
                     &merged_set_tombstones,
+                    &merged_list_tombstones,
                     &mut planned_removals,
                 )?;
 
@@ -574,6 +594,7 @@ pub fn run(remote: Option<&str>, dry_run: bool, verbose: bool) -> Result<()> {
                 &merged_values,
                 &merged_tombstones,
                 &merged_set_tombstones,
+                &merged_list_tombstones,
                 &email,
                 now,
             )?;
@@ -604,6 +625,7 @@ pub fn run(remote: Option<&str>, dry_run: bool, verbose: bool) -> Result<()> {
                 &merged_values,
                 &merged_tombstones,
                 &merged_set_tombstones,
+                &merged_list_tombstones,
             )?;
 
             if verbose {
@@ -655,6 +677,7 @@ fn update_db_from_tree(
     values: &BTreeMap<Key, TreeValue>,
     tombstones: &BTreeMap<Key, TombstoneEntry>,
     set_tombstones: &BTreeMap<(Key, String), String>,
+    list_tombstones: &BTreeMap<(Key, String), TombstoneEntry>,
     email: &str,
     now: i64,
 ) -> Result<()> {
@@ -698,8 +721,22 @@ fn update_db_from_tree(
                 }
             }
             TreeValue::List(list_entries) => {
+                let key = (target_type.clone(), target_value.clone(), key_name.clone());
+                let tombstoned_names: BTreeSet<String> = list_tombstones
+                    .iter()
+                    .filter_map(|((k, entry_name), _)| {
+                        if *k == key {
+                            Some(entry_name.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 let mut items: Vec<ListEntry> = Vec::with_capacity(list_entries.len());
                 for (entry_name, content) in list_entries {
+                    if tombstoned_names.contains(entry_name) {
+                        continue;
+                    }
                     let timestamp = parse_timestamp_from_entry_name(entry_name)
                         .unwrap_or_else(|| items.len() as i64);
                     items.push(ListEntry {
@@ -774,6 +811,7 @@ fn collect_db_changes_from_tree(
     values: &BTreeMap<Key, TreeValue>,
     tombstones: &BTreeMap<Key, TombstoneEntry>,
     set_tombstones: &BTreeMap<(Key, String), String>,
+    list_tombstones: &BTreeMap<(Key, String), TombstoneEntry>,
     planned_removals: &mut BTreeSet<Key>,
 ) -> Result<Vec<PlannedDbChange>> {
     let mut planned = Vec::new();
@@ -794,8 +832,22 @@ fn collect_db_changes_from_tree(
                 }
             }
             TreeValue::List(list_entries) => {
+                let key = (target_type.clone(), target_value.clone(), key_name.clone());
+                let tombstoned_names: BTreeSet<String> = list_tombstones
+                    .iter()
+                    .filter_map(|((k, entry_name), _)| {
+                        if *k == key {
+                            Some(entry_name.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 let mut items: Vec<ListEntry> = Vec::with_capacity(list_entries.len());
                 for (entry_name, content) in list_entries {
+                    if tombstoned_names.contains(entry_name) {
+                        continue;
+                    }
                     let timestamp = parse_timestamp_from_entry_name(entry_name)
                         .unwrap_or_else(|| items.len() as i64);
                     items.push(ListEntry {
@@ -811,7 +863,7 @@ fn collect_db_changes_from_tree(
                         target_value: target_value.clone(),
                         key: key_name.clone(),
                         value_type: "list".to_string(),
-                        value_preview: format!("{} entries", list_entries.len()),
+                        value_preview: format!("{} entries", items.len()),
                     });
                 }
             }
@@ -1236,6 +1288,31 @@ fn merge_set_member_tombstones(
     merged
 }
 
+fn merge_list_tombstones(
+    local: &BTreeMap<(Key, String), TombstoneEntry>,
+    remote: &BTreeMap<(Key, String), TombstoneEntry>,
+    merged_values: &BTreeMap<Key, TreeValue>,
+) -> BTreeMap<(Key, String), TombstoneEntry> {
+    let mut merged = remote.clone();
+    for (key, entry) in local {
+        merged
+            .entry(key.clone())
+            .and_modify(|existing| {
+                if entry.timestamp > existing.timestamp {
+                    *existing = entry.clone();
+                }
+            })
+            .or_insert_with(|| entry.clone());
+    }
+
+    // Remove tombstones for entries that still exist in the merged values
+    merged.retain(|(key, entry_name), _| match merged_values.get(key) {
+        Some(TreeValue::List(list)) => !list.iter().any(|(name, _)| name == entry_name),
+        _ => true,
+    });
+    merged
+}
+
 /// Resolve a conflict where both sides changed the same key.
 /// Lists union; all other direct conflicts prefer the local/ours side.
 fn resolve_conflict(
@@ -1282,6 +1359,7 @@ fn build_merged_tree(
     values: &BTreeMap<Key, TreeValue>,
     tombstones: &BTreeMap<Key, TombstoneEntry>,
     set_tombstones: &BTreeMap<(Key, String), String>,
+    list_tombstones: &BTreeMap<(Key, String), TombstoneEntry>,
 ) -> Result<git2::Oid> {
     let mut files: BTreeMap<String, Vec<u8>> = BTreeMap::new();
 
@@ -1336,6 +1414,20 @@ fn build_merged_tree(
         };
         let full_path = build_set_member_tombstone_tree_path(&target, key, member_id)?;
         files.insert(full_path, tombstone_value.as_bytes().to_vec());
+    }
+
+    for (((target_type, target_value, key), entry_name), tombstone) in list_tombstones {
+        let target = if target_type == "project" {
+            Target::parse("project")?
+        } else {
+            Target::parse(&format!("{}:{}", target_type, target_value))?
+        };
+        let full_path = build_list_entry_tombstone_tree_path(&target, key, entry_name)?;
+        let payload = serde_json::to_vec(&TombstoneBlob {
+            timestamp: tombstone.timestamp,
+            email: tombstone.email.clone(),
+        })?;
+        files.insert(full_path, payload);
     }
 
     build_tree_from_paths(repo, &files)
@@ -1453,6 +1545,32 @@ fn parse_tree(repo: &git2::Repository, tree: &git2::Tree, prefix: &str) -> Resul
             continue;
         }
 
+        // List entry tombstone shape:
+        //   .../<key segments...>/__list/__tombstones/<entry_name>
+        if key_parts.len() >= 4
+            && key_parts[key_parts.len() - 3] == LIST_VALUE_DIR
+            && key_parts[key_parts.len() - 2] == TOMBSTONE_ROOT
+        {
+            let key_segments = &key_parts[..key_parts.len() - 3];
+            let key = match decode_key_path_segments(key_segments) {
+                Ok(k) => k,
+                Err(_) => continue,
+            };
+            let entry_name = key_parts[key_parts.len() - 1].to_string();
+            let tombstone = match parse_tombstone_blob(content) {
+                Some(t) => t,
+                None => continue,
+            };
+            let entry_key = ((target_type, target_value, key), entry_name);
+            match parsed.list_tombstones.get(&entry_key) {
+                Some(existing) if existing.timestamp >= tombstone.timestamp => {}
+                _ => {
+                    parsed.list_tombstones.insert(entry_key, tombstone);
+                }
+            }
+            continue;
+        }
+
         // List value shape:
         //   .../<key segments...>/__list/<timestamp-hash>
         if key_parts.len() >= 3
@@ -1510,6 +1628,14 @@ fn parse_tree(repo: &git2::Repository, tree: &git2::Tree, prefix: &str) -> Resul
         .set_tombstones
         .retain(|(key, member_id), _| match parsed.values.get(key) {
             Some(TreeValue::Set(set)) => !set.contains_key(member_id),
+            _ => true,
+        });
+
+    // If both list entry value and tombstone exist in one snapshot, value wins.
+    parsed
+        .list_tombstones
+        .retain(|(key, entry_name), _| match parsed.values.get(key) {
+            Some(TreeValue::List(list)) => !list.iter().any(|(name, _)| name == entry_name),
             _ => true,
         });
 

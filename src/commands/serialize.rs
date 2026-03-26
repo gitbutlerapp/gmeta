@@ -7,8 +7,9 @@ use crate::db::Db;
 use crate::git_utils;
 use crate::list_value::{make_entry_name, parse_entries};
 use crate::types::{
-    build_list_tree_dir_path, build_set_member_tombstone_tree_path, build_set_tree_dir_path,
-    build_tombstone_tree_path, build_tree_path, Target,
+    build_list_entry_tombstone_tree_path, build_list_tree_dir_path,
+    build_set_member_tombstone_tree_path, build_set_tree_dir_path, build_tombstone_tree_path,
+    build_tree_path, Target,
 };
 
 #[derive(serde::Serialize)]
@@ -57,7 +58,7 @@ pub fn run(verbose: bool) -> Result<()> {
     // Build new tree entries.
     // In incremental mode, compute which targets are dirty so we can reuse
     // unchanged subtrees from the existing git tree.
-    let (metadata_entries, tombstone_entries, set_tombstone_entries, dirty_target_bases) =
+    let (metadata_entries, tombstone_entries, set_tombstone_entries, list_tombstone_entries, dirty_target_bases) =
         if let Some(since) = last_materialized {
             let modified = db.get_modified_since(since)?;
             if verbose {
@@ -85,6 +86,7 @@ pub fn run(verbose: bool) -> Result<()> {
             let metadata = db.get_all_metadata()?;
             let tombstones = db.get_all_tombstones()?;
             let set_tombstones = db.get_all_set_tombstones()?;
+            let list_tombstones = db.get_all_list_tombstones()?;
 
             // Note: tombstone/set-tombstone targets don't need to be added to
             // dirty_bases separately — delete operations are logged in metadata_log,
@@ -102,6 +104,7 @@ pub fn run(verbose: bool) -> Result<()> {
                 metadata,
                 tombstones,
                 set_tombstones,
+                list_tombstones,
                 if existing_tree.is_some() {
                     Some(dirty_bases)
                 } else {
@@ -116,6 +119,7 @@ pub fn run(verbose: bool) -> Result<()> {
                 db.get_all_metadata()?,
                 db.get_all_tombstones()?,
                 db.get_all_set_tombstones()?,
+                db.get_all_list_tombstones()?,
                 None,
             )
         };
@@ -150,7 +154,7 @@ pub fn run(verbose: bool) -> Result<()> {
         }
     }
     eprintln!(
-        "Serializing {} keys ({} string, {} list, {} set) across {} targets, {} tombstones, {} set tombstones",
+        "Serializing {} keys ({} string, {} list, {} set) across {} targets, {} tombstones, {} set tombstones, {} list tombstones",
         metadata_entries.len(),
         string_count,
         list_count,
@@ -158,6 +162,7 @@ pub fn run(verbose: bool) -> Result<()> {
         targets.len(),
         tombstone_entries.len(),
         set_tombstone_entries.len(),
+        list_tombstone_entries.len(),
     );
 
     if verbose {
@@ -235,6 +240,7 @@ pub fn run(verbose: bool) -> Result<()> {
         &metadata_entries,
         &tombstone_entries,
         &set_tombstone_entries,
+        &list_tombstone_entries,
         existing_tree.as_ref(),
         dirty_target_bases.as_ref(),
         verbose,
@@ -369,6 +375,7 @@ fn build_tree(
     metadata_entries: &[(String, String, String, String, String, i64, bool)],
     tombstone_entries: &[(String, String, String, i64, String)],
     set_tombstone_entries: &[(String, String, String, String, String, i64, String)],
+    list_tombstone_entries: &[(String, String, String, String, i64, String)],
     existing_tree: Option<&git2::Tree>,
     dirty_target_bases: Option<&BTreeSet<String>>,
     verbose: bool,
@@ -513,6 +520,33 @@ fn build_tree(
             );
         }
         files.insert(full_path, value.as_bytes().to_vec());
+    }
+
+    for (target_type, target_value, key, entry_name, timestamp, email) in list_tombstone_entries {
+        let target = if target_type == "project" {
+            Target::parse("project")?
+        } else {
+            Target::parse(&format!("{}:{}", target_type, target_value))?
+        };
+
+        if let Some(dirty) = dirty_target_bases {
+            if !dirty.contains(&target.tree_base_path()) {
+                continue;
+            }
+        }
+
+        let full_path = build_list_entry_tombstone_tree_path(&target, key, entry_name)?;
+        if verbose {
+            eprintln!(
+                "[verbose] tree: {} -> list tombstone",
+                full_path
+            );
+        }
+        let payload = serde_json::to_vec(&TombstoneBlob {
+            timestamp: *timestamp,
+            email,
+        })?;
+        files.insert(full_path, payload);
     }
 
     if verbose {

@@ -116,6 +116,18 @@ impl Db {
             .conn
             .execute_batch("ALTER TABLE set_tombstones ADD COLUMN value TEXT NOT NULL DEFAULT '';");
 
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS list_tombstones (
+                target_type TEXT NOT NULL,
+                target_value TEXT NOT NULL,
+                key TEXT NOT NULL,
+                entry_name TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                email TEXT NOT NULL,
+                UNIQUE(target_type, target_value, key, entry_name)
+            );",
+        )?;
+
         Ok(())
     }
 
@@ -570,6 +582,13 @@ impl Db {
                 params![target_type, target_value, key, timestamp, email],
             )?;
 
+            // Clear per-entry list tombstones — the whole-key tombstone supersedes them
+            tx.execute(
+                "DELETE FROM list_tombstones
+                 WHERE target_type = ?1 AND target_value = ?2 AND key = ?3",
+                params![target_type, target_value, key],
+            )?;
+
             tx.execute(
                 "INSERT INTO metadata_log (target_type, target_value, key, value, value_type, operation, email, timestamp)
                  VALUES (?1, ?2, ?3, '', '', 'rm', ?4, ?5)",
@@ -786,6 +805,156 @@ impl Db {
             }
             None => bail!("key '{}' not found", key),
         }
+    }
+
+    /// Get list entries for display (resolved values with timestamps).
+    pub fn list_entries(
+        &self,
+        target_type: &str,
+        target_value: &str,
+        key: &str,
+    ) -> Result<Vec<ListEntry>> {
+        let metadata_id = self
+            .conn
+            .query_row(
+                "SELECT rowid, value_type FROM metadata
+                 WHERE target_type = ?1 AND target_value = ?2 AND key = ?3",
+                params![target_type, target_value, key],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            )
+            .optional()?;
+
+        match metadata_id {
+            Some((id, vtype)) => {
+                if vtype != "list" {
+                    bail!("key '{}' is not a list", key);
+                }
+                load_list_entries_by_metadata_id(&self.conn, self.repo.as_ref(), id)
+            }
+            None => bail!("key '{}' not found", key),
+        }
+    }
+
+    /// Remove a list entry by index, creating a list tombstone for serialization.
+    pub fn list_rm(
+        &self,
+        target_type: &str,
+        target_value: &str,
+        key: &str,
+        index: usize,
+        email: &str,
+        timestamp: i64,
+    ) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        let existing = {
+            let mut stmt = tx.prepare(
+                "SELECT rowid, value_type FROM metadata
+                 WHERE target_type = ?1 AND target_value = ?2 AND key = ?3",
+            )?;
+
+            stmt.query_row(params![target_type, target_value, key], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .optional()?
+        };
+
+        match existing {
+            Some((metadata_id, current_type)) => {
+                if current_type != "list" {
+                    bail!("key '{}' is not a list", key);
+                }
+                let mut list_rows = load_list_rows_by_metadata_id_tx(&tx, metadata_id)?;
+                if index >= list_rows.len() {
+                    bail!(
+                        "index {} out of range (list has {} entries)",
+                        index,
+                        list_rows.len()
+                    );
+                }
+
+                let removed = list_rows.remove(index);
+
+                // Build the entry name used in git tree serialization
+                let entry_name = crate::list_value::make_entry_name_from_parts(
+                    removed.timestamp,
+                    &removed.value,
+                );
+
+                tx.execute(
+                    "DELETE FROM list_values WHERE rowid = ?1",
+                    params![removed.rowid],
+                )?;
+
+                // Record a list tombstone so serialize propagates the deletion
+                tx.execute(
+                    "INSERT INTO list_tombstones (target_type, target_value, key, entry_name, timestamp, email)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                     ON CONFLICT(target_type, target_value, key, entry_name) DO UPDATE
+                     SET timestamp = excluded.timestamp, email = excluded.email",
+                    params![target_type, target_value, key, entry_name, timestamp, email],
+                )?;
+
+                let list_entries: Vec<ListEntry> = list_rows
+                    .iter()
+                    .map(|row| ListEntry {
+                        value: row.value.clone(),
+                        timestamp: row.timestamp,
+                    })
+                    .collect();
+                let new_value = encode_entries(&list_entries)?;
+
+                tx.execute(
+                    "UPDATE metadata
+                     SET value = '[]', value_type = 'list', last_timestamp = ?1
+                     WHERE rowid = ?2",
+                    params![timestamp, metadata_id],
+                )?;
+
+                tx.execute(
+                    "INSERT INTO metadata_log (target_type, target_value, key, value, value_type, operation, email, timestamp)
+                     VALUES (?1, ?2, ?3, ?4, 'list', 'list:rm', ?5, ?6)",
+                    params![target_type, target_value, key, &new_value, email, timestamp],
+                )?;
+
+                tx.execute(
+                    "DELETE FROM metadata_tombstones
+                     WHERE target_type = ?1 AND target_value = ?2 AND key = ?3",
+                    params![target_type, target_value, key],
+                )?;
+
+                tx.commit()?;
+
+                Ok(())
+            }
+            None => bail!("key '{}' not found", key),
+        }
+    }
+
+    /// Get all list entry tombstones for serialization.
+    /// Returns (target_type, target_value, key, entry_name, timestamp, email).
+    pub fn get_all_list_tombstones(
+        &self,
+    ) -> Result<Vec<(String, String, String, String, i64, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT target_type, target_value, key, entry_name, timestamp, email
+             FROM list_tombstones
+             ORDER BY target_type, target_value, key, entry_name",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, String>(5)?,
+            ))
+        })?;
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+        Ok(results)
     }
 
     /// Remove a member from a set.

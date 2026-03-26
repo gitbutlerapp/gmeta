@@ -81,6 +81,19 @@ pub enum Commands {
         value: String,
     },
 
+    /// Show list entries with IDs, or remove one by index
+    #[command(name = "list:rm")]
+    ListRm {
+        /// Target in type:value format
+        target: String,
+
+        /// Key
+        key: String,
+
+        /// Index of the entry to remove (omit to list entries)
+        index: Option<usize>,
+    },
+
     /// Add a member to a set
     #[command(name = "set:add")]
     SetAdd {
