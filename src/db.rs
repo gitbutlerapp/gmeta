@@ -1494,6 +1494,32 @@ impl Db {
         }
         Ok(results)
     }
+
+    /// Find distinct target_values that start with `prefix` for a given target_type.
+    /// Returns at most `limit` matches.
+    pub fn find_target_values_by_prefix(
+        &self,
+        target_type: &str,
+        prefix: &str,
+        limit: usize,
+    ) -> Result<Vec<String>> {
+        let escaped = escape_like_pattern(prefix);
+        let pattern = format!("{}%", escaped);
+        let mut stmt = self.conn.prepare(
+            "SELECT DISTINCT target_value FROM metadata
+             WHERE target_type = ?1 AND target_value LIKE ?2 ESCAPE '\\'
+             ORDER BY target_value
+             LIMIT ?3",
+        )?;
+        let rows = stmt.query_map(params![target_type, pattern, limit as i64], |row| {
+            row.get::<_, String>(0)
+        })?;
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+        Ok(results)
+    }
 }
 
 #[derive(Debug, Clone)]

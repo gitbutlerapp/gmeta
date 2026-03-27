@@ -23,12 +23,37 @@ pub fn run(
     let db = Db::open(&db_path)?;
 
     let include_target_subtree = target.target_type == TargetType::Path;
-    let entries = db.get_all_with_target_prefix(
+    let mut entries = db.get_all_with_target_prefix(
         target.type_str(),
         target.value_str(),
         include_target_subtree,
         key,
     )?;
+
+    // If no exact match, try prefix expansion for non-commit types
+    // (commits are already resolved by git, but change-ids/branches may be partial)
+    if entries.is_empty() && target.target_type != TargetType::Path {
+        let matches =
+            db.find_target_values_by_prefix(target.type_str(), target.value_str(), 2)?;
+        if matches.len() == 1 {
+            let expanded = &matches[0];
+            entries = db.get_all_with_target_prefix(
+                target.type_str(),
+                expanded,
+                false,
+                key,
+            )?;
+            if !entries.is_empty() {
+                eprintln!("expanded to {}:{}", target.type_str(), expanded);
+            }
+        } else if matches.len() > 1 {
+            eprintln!("ambiguous prefix '{}', matches:", target.value_str());
+            for m in &matches {
+                eprintln!("  {}:{}", target.type_str(), m);
+            }
+            return Ok(());
+        }
+    }
 
     if entries.is_empty() {
         return Ok(());
