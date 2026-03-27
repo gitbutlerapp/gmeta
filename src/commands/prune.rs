@@ -8,7 +8,9 @@
 use anyhow::Result;
 
 use crate::commands::auto_prune::parse_since_to_cutoff_ms;
-use crate::commands::serialize::{build_filtered_tree, count_prune_stats};
+use crate::commands::serialize::{
+    build_filtered_tree, classify_key, count_prune_stats, parse_filter_rules, MAIN_DEST,
+};
 use crate::db::Db;
 use crate::git_utils;
 
@@ -68,28 +70,74 @@ pub fn run(dry_run: bool) -> Result<()> {
     );
     eprintln!("  current tree: {} keys", current_keys);
 
-    // Read all metadata and filter by cutoff, keeping project entries always
+    // Read filter rules so we produce the same tree as serialize would
+    let filter_rules = parse_filter_rules(&db)?;
+
+    let is_main_dest = |key: &str| -> bool {
+        match classify_key(key, &filter_rules) {
+            None => false, // excluded
+            Some(dests) => dests.iter().any(|d| d == MAIN_DEST),
+        }
+    };
+
+    // Read all metadata and split into kept vs pruned by cutoff + serialize filters
     let all_metadata = db.get_all_metadata()?;
     let all_tombstones = db.get_all_tombstones()?;
     let all_set_tombstones = db.get_all_set_tombstones()?;
     let all_list_tombstones = db.get_all_list_tombstones()?;
 
+    // Count entries that would be pruned (old + in main dest)
+    let mut pruned_meta = 0u64;
     let metadata: Vec<_> = all_metadata
         .into_iter()
-        .filter(|(tt, _, _, _, _, ts, _)| tt == "project" || *ts >= cutoff_ms)
+        .filter(|(tt, _, key, _, _, ts, _)| {
+            if !is_main_dest(key) {
+                return false;
+            }
+            if tt != "project" && *ts < cutoff_ms {
+                pruned_meta += 1;
+                return false;
+            }
+            true
+        })
         .collect();
+    let mut pruned_tombs = 0u64;
     let tombstones: Vec<_> = all_tombstones
         .into_iter()
-        .filter(|(tt, _, _, ts, _)| tt == "project" || *ts >= cutoff_ms)
+        .filter(|(tt, _, key, ts, _)| {
+            if !is_main_dest(key) {
+                return false;
+            }
+            if tt != "project" && *ts < cutoff_ms {
+                pruned_tombs += 1;
+                return false;
+            }
+            true
+        })
         .collect();
     let set_tombstones: Vec<_> = all_set_tombstones
         .into_iter()
-        .filter(|(tt, _, _, _, _, ts, _)| tt == "project" || *ts >= cutoff_ms)
+        .filter(|(tt, _, key, _, _, ts, _)| {
+            (tt == "project" || *ts >= cutoff_ms) && is_main_dest(key)
+        })
         .collect();
     let list_tombstones: Vec<_> = all_list_tombstones
         .into_iter()
-        .filter(|(tt, _, _, _, ts, _)| tt == "project" || *ts >= cutoff_ms)
+        .filter(|(tt, _, key, _, ts, _)| {
+            (tt == "project" || *ts >= cutoff_ms) && is_main_dest(key)
+        })
         .collect();
+
+    let total_pruned = pruned_meta + pruned_tombs;
+    if total_pruned == 0 {
+        println!("Nothing to prune — all entries are within the retention window.");
+        return Ok(());
+    }
+
+    eprintln!(
+        "  {} metadata keys and {} tombstones to drop",
+        pruned_meta, pruned_tombs
+    );
 
     // Build a fresh tree from the surviving entries
     let pruned_tree_oid = build_filtered_tree(
@@ -100,15 +148,10 @@ pub fn run(dry_run: bool) -> Result<()> {
         &list_tombstones,
     )?;
 
-    if pruned_tree_oid == tree_oid {
-        println!("Nothing to prune — tree unchanged.");
-        return Ok(());
-    }
-
     let (keys_dropped, keys_retained) = count_prune_stats(&repo, tree_oid, pruned_tree_oid)?;
 
     eprintln!(
-        "  pruned tree:  {} keys ({} dropped)",
+        "  pruned tree:  {} keys ({} dropped from tree)",
         keys_retained, keys_dropped
     );
 

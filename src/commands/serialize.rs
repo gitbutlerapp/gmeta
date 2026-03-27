@@ -22,16 +22,16 @@ struct TombstoneBlob<'a> {
 
 const META_LOCAL_PREFIX: &str = "meta:local:";
 /// The "main" destination name used for the primary ref.
-const MAIN_DEST: &str = "main";
+pub const MAIN_DEST: &str = "main";
 
 #[derive(Debug, Clone)]
-enum FilterAction {
+pub enum FilterAction {
     Exclude,
     Route(Vec<String>), // destination names
 }
 
 #[derive(Debug, Clone)]
-struct FilterRule {
+pub struct FilterRule {
     action: FilterAction,
     pattern: Vec<PatternSegment>,
 }
@@ -43,7 +43,7 @@ enum PatternSegment {
     GlobStar, // matches zero or more segments
 }
 
-fn parse_filter_rules(db: &Db) -> Result<Vec<FilterRule>> {
+pub fn parse_filter_rules(db: &Db) -> Result<Vec<FilterRule>> {
     let mut rules = Vec::new();
 
     // meta:local:filter rules first (higher priority)
@@ -135,7 +135,7 @@ fn pattern_matches(pattern: &[PatternSegment], key_segments: &[&str]) -> bool {
 /// Determine the destination(s) for a key based on filter rules.
 /// Returns None if the key should be excluded, or Some(destinations).
 /// An empty destinations vec means "main" (default).
-fn classify_key(key: &str, rules: &[FilterRule]) -> Option<Vec<String>> {
+pub fn classify_key(key: &str, rules: &[FilterRule]) -> Option<Vec<String>> {
     // Hard rule: meta:local: keys are never serialized
     if key.starts_with(META_LOCAL_PREFIX) {
         return None;
@@ -565,6 +565,27 @@ pub fn run(verbose: bool) -> Result<()> {
     db.set_last_materialized(now)?;
 
     Ok(())
+}
+
+/// Build a Git tree from pre-filtered metadata (no incremental mode).
+/// Used by `gmeta prune` to rebuild a tree from only the surviving entries.
+pub fn build_filtered_tree(
+    repo: &git2::Repository,
+    metadata_entries: &[(String, String, String, String, String, i64, bool)],
+    tombstone_entries: &[(String, String, String, i64, String)],
+    set_tombstone_entries: &[(String, String, String, String, String, i64, String)],
+    list_tombstone_entries: &[(String, String, String, String, i64, String)],
+) -> Result<git2::Oid> {
+    build_tree(
+        repo,
+        metadata_entries,
+        tombstone_entries,
+        set_tombstone_entries,
+        list_tombstone_entries,
+        None,
+        None,
+        false,
+    )
 }
 
 /// Build a complete Git tree from all metadata entries.
