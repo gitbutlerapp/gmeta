@@ -1,7 +1,11 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "gmeta", about = "Structured metadata for Git data")]
+#[command(
+    name = "gmeta",
+    about = "Structured metadata for Git data",
+    disable_help_subcommand = true,
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -9,10 +13,10 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    // ── Read / Write ────────────────────────────────────────────────────────
+    // ── Read / Write (display_order 1x) ─────────────────────────────────────
 
     /// Set a metadata value
-    #[command(help_heading = "Read / Write")]
+    #[command(display_order = 10)]
     Set {
         /// Value type: string (default) or list
         #[arg(short = 't', long = "type", default_value = "string")]
@@ -125,10 +129,10 @@ pub enum Commands {
         value: String,
     },
 
-    // ── Inspect ─────────────────────────────────────────────────────────────
+    // ── Inspect (display_order 2x) ──────────────────────────────────────────
 
     /// Show commit details and associated metadata
-    #[command(help_heading = "Inspect")]
+    #[command(display_order = 20)]
     Show {
         /// Commit SHA or ref to show
         #[arg(value_name = "COMMIT")]
@@ -150,11 +154,11 @@ pub enum Commands {
     },
 
     /// Show metadata statistics
-    #[command(help_heading = "Inspect")]
+    #[command(display_order = 22)]
     Stats,
 
     /// Walk commit log and show metadata for each commit
-    #[command(help_heading = "Inspect")]
+    #[command(display_order = 23)]
     Log {
         /// Commit-ish to start from (default: HEAD)
         #[arg(value_name = "REF")]
@@ -169,10 +173,10 @@ pub enum Commands {
         metadata_only: bool,
     },
 
-    // ── Sync ────────────────────────────────────────────────────────────────
+    // ── Sync (display_order 3x) ─────────────────────────────────────────────
 
     /// Serialize metadata to Git ref
-    #[command(help_heading = "Sync")]
+    #[command(display_order = 30)]
     Serialize {
         /// Show detailed information about serialization decisions
         #[arg(short = 'v', long)]
@@ -243,11 +247,11 @@ pub enum Commands {
     },
 
     /// Interactively configure auto-prune rules
-    #[command(name = "config:prune", help_heading = "Maintenance")]
+    #[command(name = "config:prune", display_order = 41)]
     ConfigPrune,
 
     /// Prune the serialized git tree, dropping old entries
-    #[command(help_heading = "Maintenance")]
+    #[command(display_order = 42)]
     Prune {
         /// Show what would be pruned without committing
         #[arg(long = "dry-run")]
@@ -267,33 +271,33 @@ pub enum Commands {
     },
 
     /// Remove the gmeta database and all meta refs
-    #[command(help_heading = "Maintenance")]
+    #[command(display_order = 44)]
     Teardown,
 
-    // ── Benchmarks ──────────────────────────────────────────────────────────
+    // ── Benchmarks (hidden) ─────────────────────────────────────────────────
 
     /// Benchmark read performance across all stored keys
-    #[command(help_heading = "Benchmarks")]
+    #[command(hide = true)]
     Bench,
 
-    /// Benchmark fanout schemes (first2 vs first3 vs first2/next2) on a synthetic repo
-    #[command(help_heading = "Benchmarks")]
+    /// Benchmark fanout schemes on a synthetic repo
+    #[command(hide = true)]
     FanoutBench {
         /// Number of base objects to populate the tree with (default: 1_000_000)
         #[arg(long, default_value = "1000000")]
         objects: usize,
     },
 
-    /// Benchmark history generation and full-history walk on a synthetic meta commit chain
-    #[command(help_heading = "Benchmarks")]
+    /// Benchmark history generation and full-history walk
+    #[command(hide = true)]
     HistoryWalker {
         /// Number of meta commits to generate (default: 500)
         #[arg(long, default_value = "500")]
         commits: usize,
     },
 
-    /// Benchmark serialize performance: insert random keys and serialize across multiple rounds
-    #[command(help_heading = "Benchmarks")]
+    /// Benchmark serialize performance
+    #[command(hide = true)]
     SerializeBench {
         /// Number of insert+serialize rounds (default: 10)
         #[arg(long, default_value = "10")]
