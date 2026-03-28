@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
@@ -37,7 +37,7 @@ pub enum Commands {
     },
 
     /// Get metadata value(s)
-    #[command(help_heading = "Read / Write")]
+    #[command(display_order = 11)]
     Get {
         /// Output as JSON
         #[arg(long)]
@@ -55,7 +55,7 @@ pub enum Commands {
     },
 
     /// Remove a metadata key
-    #[command(help_heading = "Read / Write")]
+    #[command(display_order = 12)]
     Rm {
         /// Target in type:value format
         target: String,
@@ -65,7 +65,7 @@ pub enum Commands {
     },
 
     /// Push a value onto a list
-    #[command(name = "list:push", help_heading = "Read / Write")]
+    #[command(name = "list:push", display_order = 13)]
     ListPush {
         /// Target in type:value format
         target: String,
@@ -78,7 +78,7 @@ pub enum Commands {
     },
 
     /// Pop a value from a list
-    #[command(name = "list:pop", help_heading = "Read / Write")]
+    #[command(name = "list:pop", display_order = 14)]
     ListPop {
         /// Target in type:value format
         target: String,
@@ -91,7 +91,7 @@ pub enum Commands {
     },
 
     /// Show list entries with IDs, or remove one by index
-    #[command(name = "list:rm", help_heading = "Read / Write")]
+    #[command(name = "list:rm", display_order = 15)]
     ListRm {
         /// Target in type:value format
         target: String,
@@ -104,7 +104,7 @@ pub enum Commands {
     },
 
     /// Add a member to a set
-    #[command(name = "set:add", help_heading = "Read / Write")]
+    #[command(name = "set:add", display_order = 16)]
     SetAdd {
         /// Target in type:value format
         target: String,
@@ -117,7 +117,7 @@ pub enum Commands {
     },
 
     /// Remove a member from a set
-    #[command(name = "set:rm", help_heading = "Read / Write")]
+    #[command(name = "set:rm", display_order = 17)]
     SetRm {
         /// Target in type:value format
         target: String,
@@ -140,7 +140,7 @@ pub enum Commands {
     },
 
     /// Browse metadata keys and values
-    #[command(help_heading = "Inspect")]
+    #[command(display_order = 21)]
     Inspect {
         /// Target type to list (e.g. commit, change-id, branch, project)
         target_type: Option<String>,
@@ -184,7 +184,7 @@ pub enum Commands {
     },
 
     /// Materialize remote metadata into local SQLite
-    #[command(help_heading = "Sync")]
+    #[command(display_order = 31)]
     Materialize {
         /// Remote name (optional, defaults to all remotes)
         remote: Option<String>,
@@ -199,7 +199,7 @@ pub enum Commands {
     },
 
     /// Import metadata from another format
-    #[command(help_heading = "Sync")]
+    #[command(display_order = 32)]
     Import {
         /// Source format: "entire" or "git-ai"
         #[arg(long)]
@@ -214,8 +214,12 @@ pub enum Commands {
         since: Option<String>,
     },
 
+    /// Manage metadata remote sources
+    #[command(display_order = 34)]
+    Remote(RemoteArgs),
+
     /// Watch agent transcripts and auto-attach to commits
-    #[command(help_heading = "Sync")]
+    #[command(display_order = 33)]
     Watch {
         /// Agent to watch (default: claude)
         #[arg(long, default_value = "claude")]
@@ -226,10 +230,10 @@ pub enum Commands {
         debounce: u64,
     },
 
-    // ── Maintenance ─────────────────────────────────────────────────────────
+    // ── Maintenance (display_order 4x) ──────────────────────────────────────
 
     /// Get or set project configuration (meta:* keys)
-    #[command(help_heading = "Maintenance")]
+    #[command(display_order = 40)]
     Config {
         /// List all config values
         #[arg(long)]
@@ -259,7 +263,7 @@ pub enum Commands {
     },
 
     /// Prune old metadata from the local SQLite database
-    #[command(name = "local-prune", help_heading = "Maintenance")]
+    #[command(name = "local-prune", display_order = 43)]
     LocalPrune {
         /// Show what would be pruned without deleting anything
         #[arg(long = "dry-run")]
@@ -303,4 +307,32 @@ pub enum Commands {
         #[arg(long, default_value = "10")]
         rounds: usize,
     },
+}
+
+#[derive(Args)]
+pub struct RemoteArgs {
+    #[command(subcommand)]
+    pub action: RemoteAction,
+}
+
+#[derive(Subcommand)]
+pub enum RemoteAction {
+    /// Add a metadata remote source
+    Add {
+        /// Remote URL (e.g. git@github.com:user/repo.git)
+        url: String,
+
+        /// Remote name (default: meta)
+        #[arg(long, default_value = "meta")]
+        name: String,
+    },
+
+    /// Remove a metadata remote source
+    Remove {
+        /// Remote name to remove
+        name: String,
+    },
+
+    /// List configured metadata remotes
+    List,
 }

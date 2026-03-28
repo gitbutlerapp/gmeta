@@ -7,7 +7,7 @@ mod types;
 
 use anyhow::Result;
 use clap::Parser;
-use cli::{Cli, Commands};
+use cli::{Cli, Commands, RemoteAction};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -51,6 +51,12 @@ fn main() -> Result<()> {
         Commands::SetAdd { target, key, value } => commands::set::run_add(&target, &key, &value),
 
         Commands::SetRm { target, key, value } => commands::set::run_rm(&target, &key, &value),
+
+        Commands::Remote(args) => match args.action {
+            RemoteAction::Add { url, name } => commands::remote::run_add(&url, &name),
+            RemoteAction::Remove { name } => commands::remote::run_remove(&name),
+            RemoteAction::List => commands::remote::run_list(),
+        },
 
         Commands::Serialize { verbose } => commands::serialize::run(verbose),
 

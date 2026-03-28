@@ -1,6 +1,7 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use git2::Repository;
 use std::path::PathBuf;
+use std::process::Command;
 
 /// Discover the Git repository from the current directory.
 pub fn discover_repo() -> Result<Repository> {
@@ -84,6 +85,49 @@ pub fn is_list_entry_name(name: &str) -> bool {
     } else {
         false
     }
+}
+
+/// Run a git CLI command in the repository's working directory.
+/// Returns stdout on success, or an error with stderr on failure.
+pub fn run_git(repo: &Repository, args: &[&str]) -> Result<String> {
+    let workdir = repo
+        .workdir()
+        .or_else(|| Some(repo.path()))
+        .context("cannot determine repository directory")?;
+
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(workdir)
+        .output()
+        .context("failed to run git command")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("git {} failed: {}", args.first().unwrap_or(&""), stderr.trim());
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// List all git remotes that have `meta = true` in their config.
+/// Returns a vec of (name, url) pairs.
+pub fn list_meta_remotes(repo: &Repository) -> Result<Vec<(String, String)>> {
+    let config = repo.config()?;
+    let mut remotes = Vec::new();
+
+    // Get all remote names from the repo
+    let remote_names = repo.remotes()?;
+    for name in remote_names.iter().flatten() {
+        let meta_key = format!("remote.{}.meta", name);
+        if let Ok(true) = config.get_bool(&meta_key) {
+            let url_key = format!("remote.{}.url", name);
+            if let Ok(url) = config.get_string(&url_key) {
+                remotes.push((name.to_string(), url));
+            }
+        }
+    }
+
+    Ok(remotes)
 }
 
 #[cfg(test)]
