@@ -2,7 +2,7 @@
 
 This document describes how to serialize metadata into Git primatives that can be transferred via normal Git remote protocols.
 
-[Interactive demo of the serialization format](../example-serialize.html)
+[Interactive demo of the serialization format](../other/example-serialize.html)
 
 ## Commit model
 
