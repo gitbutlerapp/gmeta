@@ -227,6 +227,10 @@ pub enum Commands {
         /// Show detailed information about push decisions
         #[arg(short = 'v', long)]
         verbose: bool,
+
+        /// Push a README to refs/heads/main on the meta remote (only if it doesn't already exist)
+        #[arg(long)]
+        readme: bool,
     },
 
     /// Pull remote metadata and merge into local database

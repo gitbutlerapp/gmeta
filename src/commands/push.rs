@@ -3,6 +3,153 @@ use anyhow::{bail, Result};
 use crate::commands::{materialize, serialize};
 use crate::git_utils;
 
+/// Push a README commit to refs/heads/main on the meta remote.
+/// This only succeeds if the branch doesn't already exist (no force push).
+pub fn run_readme(remote: Option<&str>, verbose: bool) -> Result<()> {
+    let repo = git_utils::discover_repo()?;
+
+    let remote_name = git_utils::resolve_meta_remote(&repo, remote)?;
+
+    // Gather project info from .git/config
+    let config = repo.config()?;
+    let origin_url = config
+        .get_string("remote.origin.url")
+        .unwrap_or_else(|_| "unknown".to_string());
+    let meta_url = config
+        .get_string(&format!("remote.{}.url", remote_name))
+        .unwrap_or_else(|_| "unknown".to_string());
+    let ns = git_utils::get_namespace(&repo)?;
+
+    let readme_content = generate_readme(&origin_url, &meta_url, &ns);
+
+    if verbose {
+        eprintln!("[verbose] remote: {}", remote_name);
+        eprintln!("[verbose] origin url: {}", origin_url);
+        eprintln!("[verbose] meta url: {}", meta_url);
+    }
+
+    // Create blob -> tree -> commit
+    let blob_oid = repo.blob(readme_content.as_bytes())?;
+
+    let mut tb = repo.treebuilder(None)?;
+    tb.insert("README.md", blob_oid, 0o100644)?;
+    let tree_oid = tb.write()?;
+    let tree = repo.find_tree(tree_oid)?;
+
+    let sig = repo.signature()?;
+    let commit_oid = repo.commit(
+        None, // don't update any local ref
+        &sig,
+        &sig,
+        "Initial metadata repository setup\n\nCreated by gmeta to provide documentation for contributors.",
+        &tree,
+        &[], // no parents — root commit
+    )?;
+
+    if verbose {
+        eprintln!("[verbose] created blob: {}", blob_oid);
+        eprintln!("[verbose] created tree: {}", tree_oid);
+        eprintln!("[verbose] created commit: {}", commit_oid);
+    }
+
+    // Push commit to refs/heads/main on the remote, but only if it doesn't exist.
+    // We use a refspec without '+' so it fails if the ref already exists.
+    let push_refspec = format!("{}:refs/heads/main", commit_oid);
+
+    if verbose {
+        eprintln!("[verbose] push refspec: {}", push_refspec);
+    }
+
+    eprintln!("Pushing README to {}...", remote_name);
+    let result = git_utils::run_git(&repo, &["push", &remote_name, &push_refspec]);
+
+    match result {
+        Ok(_) => {
+            println!("Pushed README to {} (refs/heads/main)", remote_name);
+            Ok(())
+        }
+        Err(e) => {
+            let err_msg = e.to_string();
+            if err_msg.contains("non-fast-forward")
+                || err_msg.contains("rejected")
+                || err_msg.contains("fetch first")
+                || err_msg.contains("already exists")
+            {
+                bail!("refs/heads/main already exists on {}. The README can only be pushed to a new repository.", remote_name);
+            }
+            bail!("push failed: {}", err_msg);
+        }
+    }
+}
+
+fn generate_readme(origin_url: &str, meta_url: &str, namespace: &str) -> String {
+    format!(
+        r#"# Git Metadata Repository
+
+This repository stores structured metadata for the project at:
+
+    {origin_url}
+
+It is managed by [gmeta](https://github.com/schacon/gmeta), a tool for associating
+key-value metadata with Git objects (commits, branches, paths, and more) and syncing
+them across repositories.
+
+## How It Works
+
+Metadata is stored locally in a SQLite database (`.git/gmeta.sqlite`) and serialized
+into Git trees and commits under `refs/{namespace}/` refs for synchronization. This
+repository serves as the shared remote for that metadata.
+
+You do **not** need to clone this repository directly. Instead, configure it as a
+metadata remote in your local checkout of the main project.
+
+## Setup
+
+1. Install gmeta (see [gmeta README](https://github.com/schacon/gmeta) for details).
+
+2. In your local clone of the main project, add this repository as a metadata remote:
+
+   ```
+   gmeta remote add {meta_url}
+   ```
+
+3. Pull existing metadata:
+
+   ```
+   gmeta pull
+   ```
+
+4. You're ready to read and write metadata:
+
+   ```
+   gmeta get commit:HEAD
+   gmeta set commit:HEAD review:status "approved"
+   gmeta push
+   ```
+
+## Contributing Metadata
+
+- **Set values:** `gmeta set <target> <key> <value>`
+- **Read values:** `gmeta get <target> [key]`
+- **Push changes:** `gmeta push`
+- **Pull updates:** `gmeta pull`
+
+Target types include `commit:<sha>`, `branch:<name>`, `change-id:<id>`,
+`path:<file>`, and `project` (for repo-wide metadata).
+
+See `gmeta --help` for the full command reference.
+
+## Important Notes
+
+- Metadata is stored on `refs/{namespace}/main`, not on `refs/heads/main`.
+  The `main` branch you see here is just this README for orientation.
+- Never push directly to `refs/{namespace}/main` — always use `gmeta push`,
+  which handles serialization and conflict resolution.
+- Metadata can be pruned over time. See `gmeta config:prune` for auto-prune rules.
+"#
+    )
+}
+
 const MAX_RETRIES: u32 = 5;
 
 pub fn run(remote: Option<&str>, verbose: bool) -> Result<()> {
