@@ -26,6 +26,10 @@ pub enum Commands {
         #[arg(short = 'F', long = "file")]
         file: Option<String>,
 
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
         /// Target in type:value format (e.g. commit:abc123)
         target: String,
 
@@ -106,6 +110,10 @@ pub enum Commands {
     /// Add a member to a set
     #[command(name = "set:add", display_order = 16)]
     SetAdd {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
         /// Target in type:value format
         target: String,
 
@@ -119,6 +127,10 @@ pub enum Commands {
     /// Remove a member from a set
     #[command(name = "set:rm", display_order = 17)]
     SetRm {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
         /// Target in type:value format
         target: String,
 

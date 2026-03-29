@@ -33,12 +33,31 @@ fn open_context(target_str: &str, key: &str) -> Result<CommandContext> {
     })
 }
 
+fn print_result(action: &str, key: &str, target: &Target, json: bool) {
+    let target_str = match &target.value {
+        Some(v) => format!("{} {}", target.type_str(), v),
+        None => target.type_str().to_string(),
+    };
+    if json {
+        let json_obj = serde_json::json!({
+            "action": action,
+            "key": key,
+            "target_type": target.type_str(),
+            "target_value": target.value.as_deref().unwrap_or(""),
+        });
+        println!("{}", serde_json::to_string(&json_obj).unwrap());
+    } else {
+        println!("{} key {} for {}", action, key, target_str);
+    }
+}
+
 pub fn run(
     target_str: &str,
     key: &str,
     value: Option<&str>,
     file: Option<&str>,
     value_type_str: &str,
+    json: bool,
 ) -> Result<()> {
     let ctx = open_context(target_str, key)?;
     let value_type = ValueType::from_str(value_type_str)?;
@@ -95,10 +114,11 @@ pub fn run(
         )?;
     }
 
+    print_result("set", key, &ctx.target, json);
     Ok(())
 }
 
-pub fn run_add(target_str: &str, key: &str, value: &str) -> Result<()> {
+pub fn run_add(target_str: &str, key: &str, value: &str, json: bool) -> Result<()> {
     let ctx = open_context(target_str, key)?;
     ctx.db.set_add(
         ctx.target.type_str(),
@@ -108,10 +128,11 @@ pub fn run_add(target_str: &str, key: &str, value: &str) -> Result<()> {
         &ctx.email,
         ctx.timestamp,
     )?;
+    print_result("added", key, &ctx.target, json);
     Ok(())
 }
 
-pub fn run_rm(target_str: &str, key: &str, value: &str) -> Result<()> {
+pub fn run_rm(target_str: &str, key: &str, value: &str, json: bool) -> Result<()> {
     let ctx = open_context(target_str, key)?;
     ctx.db.set_rm(
         ctx.target.type_str(),
@@ -121,5 +142,6 @@ pub fn run_rm(target_str: &str, key: &str, value: &str) -> Result<()> {
         &ctx.email,
         ctx.timestamp,
     )?;
+    print_result("removed", key, &ctx.target, json);
     Ok(())
 }

@@ -16,6 +16,7 @@ fn main() -> Result<()> {
         Commands::Set {
             value_type,
             file,
+            json,
             target,
             key,
             value,
@@ -25,6 +26,7 @@ fn main() -> Result<()> {
             value.as_deref(),
             file.as_deref(),
             &value_type,
+            json,
         ),
 
         Commands::Get {
@@ -48,9 +50,9 @@ fn main() -> Result<()> {
             index,
         } => commands::list::run_rm(&target, &key, index),
 
-        Commands::SetAdd { target, key, value } => commands::set::run_add(&target, &key, &value),
+        Commands::SetAdd { json, target, key, value } => commands::set::run_add(&target, &key, &value, json),
 
-        Commands::SetRm { target, key, value } => commands::set::run_rm(&target, &key, &value),
+        Commands::SetRm { json, target, key, value } => commands::set::run_rm(&target, &key, &value, json),
 
         Commands::Remote(args) => match args.action {
             RemoteAction::Add { url, name, namespace } => {
