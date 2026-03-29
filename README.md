@@ -347,9 +347,11 @@ git log --stat 054630093092 > /dev/null 15.84s user 0.26s system 99% cpu 16.134 
 
 This is a dumb algorithm that will not skip the prune commits, so in reality it should be slightly faster.
 
-So let's say we do a fast blobless fetch on initialization and then fetch a "working set" of data (all the blobs in the latest commit's tree) so most reasonable queries would be quite fast, even on large history sets on large and long-lived codebases.
+However, we can also massively speed this up by keeping the list of mutations in the commit message of each commit. This would make the initial blobless clone a little slower, but might be worth the tradeoff of not needed to diff all the trees. Our POC implementation includes this mutation listing for anything less than 1k changes, otherwise it includes a trailer to say "look at the diff". So in practice you could simply include that trailer in every commit if you preferred not to denormalize the data.
 
-On initialization, we could kick of a background job that goes through said history and compiles a comprehensive list of target/values and blob-shas that we _don't_ have if there have been pruning events. When we need one or many of those values, we can use the promisor remote feature to fetch groups of them on demand, rather efficiently.
+So let's say we do a fast blobless fetch on initialization and then fetch a "working set" of data (all the blobs in the latest commit's tree - much like a blobless clone does to get an initial working directory) so most reasonable queries on recent commits would be quite fast, even on large history sets on large and long-lived codebases.
+
+On initialization, we could kick off a background job that goes through said history and compiles a comprehensive list of target/values and blob-shas that we _don't_ have if there have been pruning events. When we need one or many of those values, we can use the promisor remote feature to fetch groups of them on demand, rather efficiently.
 
 In my benchmarks, this should prove to be a solution that works reasonably fast and effiently even for very large, long metadata histories.
 
@@ -429,7 +431,3 @@ This is considered the plumbing, not something you would probably be constantly 
 Not much of this will be in scope for this project (though I may do some working implementations for testing). This project is only about deciding on the format and working semantics.
 
 Once we've decided the final implementation details, we will be incorporating this into the [gitbutler](https://github.com/gitbutlerapp/gitbutler) project. The more formal, detailed spec is found in the [spec](/spec) folder.
-
-### TESTING
-
-just to test the diff
