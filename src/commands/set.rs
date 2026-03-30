@@ -14,7 +14,7 @@ struct CommandContext {
     timestamp: i64,
 }
 
-fn open_context(target_str: &str, key: &str) -> Result<CommandContext> {
+fn open_context(target_str: &str, key: &str, timestamp_override: Option<i64>) -> Result<CommandContext> {
     let mut target = Target::parse(target_str)?;
     validate_key(key)?;
 
@@ -22,7 +22,7 @@ fn open_context(target_str: &str, key: &str) -> Result<CommandContext> {
     target.resolve(&repo)?;
     let db_path = git_utils::db_path(&repo)?;
     let email = git_utils::get_email(&repo)?;
-    let timestamp = Utc::now().timestamp_millis();
+    let timestamp = timestamp_override.unwrap_or_else(|| Utc::now().timestamp_millis());
     let db = Db::open(&db_path)?;
 
     Ok(CommandContext {
@@ -58,8 +58,9 @@ pub fn run(
     file: Option<&str>,
     value_type_str: &str,
     json: bool,
+    timestamp: Option<i64>,
 ) -> Result<()> {
-    let ctx = open_context(target_str, key)?;
+    let ctx = open_context(target_str, key, timestamp)?;
     let value_type = ValueType::from_str(value_type_str)?;
 
     let from_file = file.is_some();
@@ -118,8 +119,8 @@ pub fn run(
     Ok(())
 }
 
-pub fn run_add(target_str: &str, key: &str, value: &str, json: bool) -> Result<()> {
-    let ctx = open_context(target_str, key)?;
+pub fn run_add(target_str: &str, key: &str, value: &str, json: bool, timestamp: Option<i64>) -> Result<()> {
+    let ctx = open_context(target_str, key, timestamp)?;
     ctx.db.set_add(
         ctx.target.type_str(),
         ctx.target.value_str(),
@@ -132,8 +133,8 @@ pub fn run_add(target_str: &str, key: &str, value: &str, json: bool) -> Result<(
     Ok(())
 }
 
-pub fn run_rm(target_str: &str, key: &str, value: &str, json: bool) -> Result<()> {
-    let ctx = open_context(target_str, key)?;
+pub fn run_rm(target_str: &str, key: &str, value: &str, json: bool, timestamp: Option<i64>) -> Result<()> {
+    let ctx = open_context(target_str, key, timestamp)?;
     ctx.db.set_rm(
         ctx.target.type_str(),
         ctx.target.value_str(),

@@ -30,6 +30,10 @@ pub enum Commands {
         #[arg(long)]
         json: bool,
 
+        /// Override timestamp (milliseconds since epoch, for imports)
+        #[arg(long)]
+        timestamp: Option<i64>,
+
         /// Target in type:value format (e.g. commit:abc123)
         target: String,
 
@@ -114,6 +118,10 @@ pub enum Commands {
         #[arg(long)]
         json: bool,
 
+        /// Override timestamp (milliseconds since epoch, for imports)
+        #[arg(long)]
+        timestamp: Option<i64>,
+
         /// Target in type:value format
         target: String,
 
@@ -130,6 +138,10 @@ pub enum Commands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+
+        /// Override timestamp (milliseconds since epoch, for imports)
+        #[arg(long)]
+        timestamp: Option<i64>,
 
         /// Target in type:value format
         target: String,
