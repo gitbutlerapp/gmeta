@@ -139,7 +139,7 @@ src/metrics;agent:rules "metrics agent rules"
 
 ### Simple Example - Lists
 
-The list data type is for for cases like chunked transcripts or comments - where you would be maintaining a generally appended list of values for the key.
+The list data type is for cases like chunked transcripts or comments - where you would be maintaining a generally appended list of values for the key.
 
 ```
 ❯ gmeta list:push branch:sc-feature-1 review:comments "love it"
@@ -239,7 +239,7 @@ This can also help chunk things like agentic transcripts, so instead of one larg
 
 #### Materializing
 
-So, the general workflow would be that you would add metadata to your project's commits, changesets, paths or global scope and then when you push the code, you would simultaneously serialize the metadata and push that as well - either to the same repository or a seperate meta repository. This could be configured with fetch refspec, similar to normal Git branch usage.
+So, the general workflow would be that you would add metadata to your project's commits, changesets, paths or global scope and then when you push the code, you would simultaneously serialize the metadata and push that as well - either to the same repository or a separate meta repository. This could be configured with fetch refspec, similar to normal Git branch usage.
 
 Once this is pushed, there are four different scenarios of getting new upstream data to materialize.
 
@@ -254,7 +254,7 @@ This is pretty simple. We walk the tree pointed to by the head ref (`refs/meta/r
 
 ##### 2. Multiple Start Points
 
-If you have data and go to push your serialized data and find that there is already a reference existing, then we would serialize our tree and do a baseless 2-way merge, favoring the local values on any conficts. Then we would write a new commit with the result of that which has the upstread head as it's parent and do a fast-forward push. If someone has pushed more data in the meantime, we take our already serialized tree and repeat the process until our fast-forward push succeeds.
+If you have data and go to push your serialized data and find that there is already a reference existing, then we would serialize our tree and do a baseless 2-way merge, favoring the local values on any conflicts. Then we would write a new commit with the result of that which has the upstream head as its parent and do a fast-forward push. If someone has pushed more data in the meantime, we take our already serialized tree and repeat the process until our fast-forward push succeeds.
 
 ##### 3. Pull New Data
 
@@ -284,7 +284,7 @@ Unlike normal Git commits for code, we don't really care too much about branchin
 
 #### Deleting data
 
-As we'll see later, we will not assume that missing data means it should be deleted. One of our design decisions is to assume that purposeful removal of data is fairly rare and orphaned local data (data that is there but should not be) is not generally problematic. If we explicitly want to delete a value that has been propogated, we will have tombstone entries that inform the materialization process to remove a value if it exists in the local database.
+As we'll see later, we will not assume that missing data means it should be deleted. One of our design decisions is to assume that purposeful removal of data is fairly rare and orphaned local data (data that is there but should not be) is not generally problematic. If we explicitly want to delete a value that has been propagated, we will have tombstone entries that inform the materialization process to remove a value if it exists in the local database.
 
 ### Large Data
 
@@ -313,7 +313,7 @@ There are a few different ways we could practically do this:
 - Save the full tree of every value in the latest commit _and_ a list of blobs we think we may need in same said metadata to initially fetch from as a first working set (or have some other heuristic for checking out a partial working set).
 - Occasionally prune the tree itself to only be the first working set based on project settings and then do a full history walk to recreate a list of all the keys we've ever seen.
 
-Our proposed solution is the second - to occasionally prune the tree that the head commit tree contains to a subset of data that is likely to be needed shortly. These "prune" commits will have a special commit message trailer that informs the system that there was a pruning action so if we're trying to calcuate the existance of older values, we can skip it.
+Our proposed solution is the second - to occasionally prune the tree that the head commit tree contains to a subset of data that is likely to be needed shortly. These "prune" commits will have a special commit message trailer that informs the system that there was a pruning action so if we're trying to calculate the existence of older values, we can skip it.
 
 In practice, this means having a ruleset where after a certain size of subtrees, the system could automatically prune the tree to a much smaller set and push that as the new head. If it's a non-fast-forward and in the new range there is another pruned commit, then we recalculate and don't do another prune.
 
@@ -353,7 +353,7 @@ So let's say we do a fast blobless fetch on initialization and then fetch a "wor
 
 On initialization, we could kick off a background job that goes through said history and compiles a comprehensive list of target/values and blob-shas that we _don't_ have if there have been pruning events. When we need one or many of those values, we can use the promisor remote feature to fetch groups of them on demand, rather efficiently.
 
-In my benchmarks, this should prove to be a solution that works reasonably fast and effiently even for very large, long metadata histories.
+In my benchmarks, this should prove to be a solution that works reasonably fast and efficiently even for very large, long metadata histories.
 
 ### Branch Metadata
 
@@ -371,7 +371,7 @@ The mechnism for resolving contention when two people push first versions of a m
 
 ### Partial Exchanges
 
-One of the reasons that we don't delete missing data and require explicit tombstone entries is so the pruning commits don't imply deletion, but also so that we can assume that a single branch tree is not neccesarily all of the data.
+One of the reasons that we don't delete missing data and require explicit tombstone entries is so the pruning commits don't imply deletion, but also so that we can assume that a single branch tree is not necessarily all of the data.
 
 In this system, we could have multiple heads on a metadata remote, or more likely, multiple remotes with a metadata head.
 
